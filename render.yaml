@@ -18,7 +18,7 @@ services:
         value: "*" # We'll refine this later or use the Render URL
 
   # Frontend Static Site
-  - type: static
+  - type: static_site
     name: itinfra-frontend
     env: node
     buildCommand: "cd frontend && npm install && npm run build"
