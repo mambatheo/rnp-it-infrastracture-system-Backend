@@ -1,0 +1,42 @@
+[
+    {"model": "equipment.region", "pk": "11111111-0000-0000-0000-000000000001", "fields": {"name": "Central Region"}},
+    {"model": "equipment.region", "pk": "11111111-0000-0000-0000-000000000002", "fields": {"name": "Eastern Region"}},
+    {"model": "equipment.region", "pk": "11111111-0000-0000-0000-000000000003", "fields": {"name": "Southern Region"}},
+    {"model": "equipment.region", "pk": "11111111-0000-0000-0000-000000000004", "fields": {"name": "Western Region"}},
+    {"model": "equipment.region", "pk": "11111111-0000-0000-0000-000000000005", "fields": {"name": "Northern Region"}},
+  
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000001", "fields": {"name": "Gasabo",     "region": "11111111-0000-0000-0000-000000000001"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000002", "fields": {"name": "Nyarugenge", "region": "11111111-0000-0000-0000-000000000001"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000003", "fields": {"name": "Kicukiro",   "region": "11111111-0000-0000-0000-000000000001"}},
+  
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000004", "fields": {"name": "Rwamagana",  "region": "11111111-0000-0000-0000-000000000002"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000005", "fields": {"name": "Kayonza",    "region": "11111111-0000-0000-0000-000000000002"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000006", "fields": {"name": "Gatsibo",    "region": "11111111-0000-0000-0000-000000000002"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000007", "fields": {"name": "Bugesera",   "region": "11111111-0000-0000-0000-000000000002"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000008", "fields": {"name": "Kirehe",     "region": "11111111-0000-0000-0000-000000000002"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000009", "fields": {"name": "Ngoma",      "region": "11111111-0000-0000-0000-000000000002"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000010", "fields": {"name": "Nyagatare",  "region": "11111111-0000-0000-0000-000000000002"}},
+  
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000011", "fields": {"name": "Ruhango",    "region": "11111111-0000-0000-0000-000000000003"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000012", "fields": {"name": "Huye",       "region": "11111111-0000-0000-0000-000000000003"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000013", "fields": {"name": "Nyaruguru",  "region": "11111111-0000-0000-0000-000000000003"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000014", "fields": {"name": "Gisagara",   "region": "11111111-0000-0000-0000-000000000003"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000015", "fields": {"name": "Nyamagabe",  "region": "11111111-0000-0000-0000-000000000003"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000016", "fields": {"name": "Muhanga",    "region": "11111111-0000-0000-0000-000000000003"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000017", "fields": {"name": "Kamonyi",    "region": "11111111-0000-0000-0000-000000000003"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000018", "fields": {"name": "Nyanza",     "region": "11111111-0000-0000-0000-000000000003"}},
+  
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000019", "fields": {"name": "Rubavu",     "region": "11111111-0000-0000-0000-000000000004"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000020", "fields": {"name": "Nyabihu",    "region": "11111111-0000-0000-0000-000000000004"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000021", "fields": {"name": "Ngororero",  "region": "11111111-0000-0000-0000-000000000004"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000022", "fields": {"name": "Rutsiro",    "region": "11111111-0000-0000-0000-000000000004"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000023", "fields": {"name": "Karongi",    "region": "11111111-0000-0000-0000-000000000004"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000024", "fields": {"name": "Nyamasheke", "region": "11111111-0000-0000-0000-000000000004"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000025", "fields": {"name": "Rusizi",     "region": "11111111-0000-0000-0000-000000000004"}},
+  
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000026", "fields": {"name": "Gicumbi",    "region": "11111111-0000-0000-0000-000000000005"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000027", "fields": {"name": "Rulindo",    "region": "11111111-0000-0000-0000-000000000005"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000028", "fields": {"name": "Gakenke",    "region": "11111111-0000-0000-0000-000000000005"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000029", "fields": {"name": "Burera",     "region": "11111111-0000-0000-0000-000000000005"}},
+    {"model": "equipment.dpu", "pk": "22222222-0000-0000-0000-000000000030", "fields": {"name": "Musanze",    "region": "11111111-0000-0000-0000-000000000005"}}
+  ]
