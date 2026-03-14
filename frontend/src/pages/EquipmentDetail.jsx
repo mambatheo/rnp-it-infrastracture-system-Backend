@@ -137,23 +137,26 @@ export default function EquipmentDetail() {
         </Section>
 
         {/* Technical specs */}
-        {(hasCompute || hasPhone || hasStorage) && (
-          <Section title="Technical Specifications">
-            {(hasCompute || hasPhone) && <>
-              <Field label="CPU"              value={item.CPU} />
-              <Field label="GPU"              value={item.GPU} />
-              <Field label="RAM"              value={item.ram_size} />
-              <Field label="Storage"          value={item.storage_size} />
-              <Field label="Operating System" value={item.operating_system} />
-            </>}
-            {hasServer && <>
-              <Field label="RAM Slots"     value={item.ram_slots} />
-              <Field label="Storage Slots" value={item.storage_slots} />
-              <Field label="Storage Type"  value={item.storage_type} />
-            </>}
-            {hasStorage && <Field label="Storage Capacity" value={item.storage_size} />}
-          </Section>
-        )}
+        {(hasCompute || hasPhone || hasStorage || hasDisplay) && (
+  <Section title="Technical Specifications">
+    {(hasCompute || hasPhone) && <>
+      <Field label="CPU"              value={item.CPU} />
+      <Field label="GPU"              value={item.GPU} />
+      <Field label="RAM"              value={item.ram_size} />
+      <Field label="Storage"          value={item.storage_size} />
+      <Field label="Operating System" value={item.operating_system} />
+    </>}
+    {hasServer && <>
+      <Field label="RAM Slots"     value={item.ram_slots} />
+      <Field label="Storage Slots" value={item.storage_slots} />
+      <Field label="Storage Type"  value={item.storage_type} />
+    </>}
+    {hasStorage && <Field label="Storage Capacity" value={item.storage_size} />}
+    {hasDisplay && <Field label="Screen Size" value={item.screen_size} />}  {/* ← added */}
+  </Section>
+)}
+        
+      
 
         {/* Location */}
         <Section title="Location">
