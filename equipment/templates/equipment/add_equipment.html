@@ -1,0 +1,493 @@
+{% extends "base.html" %}
+{% block title %}Add Equipment | Equipment Management{% endblock %}
+{% block content %}
+    <section class="py-10 px-4 md:px-10 max-w-[960px] mx-auto">
+        <div class="mb-6 flex items-center justify-between gap-3">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">
+                    {% if category %}
+                        Register {{ category.name }}
+                    {% else %}
+                        Register New Equipment
+                    {% endif %}
+                </h1>
+                <p class="mt-2 text-sm text-text-muted">
+                    {% if category %}
+                        {{ category.description }}
+                    {% else %}
+                        Capture key technical details, location, and assignment for this device.
+                    {% endif %}
+                </p>
+            </div>
+            <a href="{% url 'equipment:list' %}"
+               class="inline-flex items-center gap-2 rounded-lg border border-border-dark px-3 py-2 text-xs md:text-sm font-semibold text-text-muted hover:bg-surface-dark/60 hover:text-white transition-colors">
+                <span class="material-symbols-outlined text-base">arrow_back</span>
+                Back to list
+            </a>
+        </div>
+        {% if messages %}
+            <div class="mb-4 space-y-2">
+                {% for message in messages %}
+                    <div class="rounded-lg px-4 py-3 text-sm {% if message.tags == 'success' %}bg-emerald-500/10 text-emerald-200 border border-emerald-500/40 {% elif message.tags == 'error' %}bg-rose-500/10 text-rose-200 border border-rose-500/40 {% else %}bg-slate-500/10 text-slate-200 border border-slate-500/40{% endif %}">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endif %}
+        {% if form.errors %}
+            <div class="mb-4 rounded-lg px-4 py-3 text-sm bg-rose-500/10 text-rose-200 border border-rose-500/40">
+                <p class="font-semibold mb-2">Please correct the following errors:</p>
+                <ul class="list-disc list-inside space-y-1">
+                    {% for field, errors in form.errors.items %}
+                        {% for error in errors %}
+                            <li>
+                                {% if field != '__all__' %}
+                                    <strong>{{ field|title }}:</strong> {{ error }}
+                                {% else %}
+                                    {{ error }}
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+        <form method="post"
+              class="space-y-6 rounded-2xl bg-surface-card/80 border border-border-dark/60 p-6 md:p-8 shadow-soft">
+            {% csrf_token %}
+            <div class="grid gap-6 md:grid-cols-2">
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Type</label>
+                        {{ form.type }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Manufacturer</label>
+                        {{ form.manufacturer }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Model</label>
+                        {{ form.model }}
+                    </div>
+                    <div id="serial_number_container">
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Serial Number</label>
+                        {{ form.serial_number }}
+                        <p class="mt-1 text-[11px] text-text-muted"></p>
+                    </div>
+                    <div id="marking_code_container">
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Marking Number</label>
+                        {{ form.marking_code }}
+                        <p class="mt-1 text-[11px] text-text-muted"></p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Status</label>
+                        {{ form.status }}
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Office Location</label>
+                        {{ form.office_location }}
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Location Selection</label>
+                        <div class="space-y-3">
+                            <div>
+                                <label class="block text-xs font-medium text-text-muted mb-1.5">Main Office / Region</label>
+                                {{ form.main_office_or_region }}
+                            </div>
+                            <div id="region_type_container" style="display: none;">
+                                <label class="block text-xs font-medium text-text-muted mb-1.5">Region Type</label>
+                                {{ form.region_type }}
+                            </div>
+                            <div id="dpu_container" style="display: none;">
+                                <label class="block text-xs font-medium text-text-muted mb-1.5">DPU</label>
+                                {{ form.dpu }}
+                            </div>
+                            <div id="dpu_type_container" style="display: none;">
+                                <label class="block text-xs font-medium text-text-muted mb-1.5">DPU Type</label>
+                                {{ form.dpu_type }}
+                            </div>
+                            <div id="station_or_room_container" style="display: none;">
+                                <label class="block text-xs font-medium text-text-muted mb-1.5">Station / Room / Office</label>
+                                {{ form.station_or_room }}
+                            </div>
+                        </div>
+                        {{ form.location }}
+                        <p class="mt-1 text-[11px] text-text-muted">Select Main Office/Region, then DPU (if applicable), then Station/Room</p>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Assigned To</label>
+                        {{ form.assigned_to }}
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Purchase Date</label>
+                            {{ form.purchase_date }}
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Warranty Expiration</label>
+                            {{ form.warranty_expiration }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="grid gap-6 md:grid-cols-2">
+                <div id="tech_specs_section" class="space-y-4" style="display: none;">
+                    <h2 class="text-sm font-semibold text-slate-100">Technical Specs</h2>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">CPU / Processor</label>
+                        {{ form.cpu }}
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">RAM (GB)</label>
+                            {{ form.ram_size }}
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Storage Size (GB)</label>
+                            {{ form.storage_size }}
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Storage Type</label>
+                            {{ form.storage_type }}
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Screen Size</label>
+                            {{ form.screen_size }}
+                        </div>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold uppercase tracking-wide text-text-muted mb-1">Operating System</label>
+                        {{ form.os }}
+                    </div>
+                </div>
+                <div class="space-y-4">
+                    <h2 class="text-sm font-semibold text-slate-100">Notes</h2>
+                    <div>
+                        {{ form.notes }}
+                        <p class="mt-1 text-[11px] text-text-muted">
+                            Add any extra context like accessories, known issues, or installation details.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end pt-4 border-t border-border-dark/50">
+                <button type="submit"
+                        class="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-bold text-background-dark shadow-[0_0_25px_rgba(54,226,123,0.4)] hover:bg-primary/90 transition-colors">
+                    <span class="material-symbols-outlined text-base">save</span>
+                    Save Equipment
+                </button>
+            </div>
+        </form>
+    </section>
+    <script>
+document.addEventListener('DOMContentLoaded', function() {
+    const mainOfficeRegionSelect = document.getElementById('id_main_office_or_region');
+    const regionTypeSelect = document.getElementById('id_region_type');
+    const dpuSelect = document.getElementById('id_dpu');
+    const dpuTypeSelect = document.getElementById('id_dpu_type');
+    const stationRoomSelect = document.getElementById('id_station_or_room');
+    const locationHidden = document.getElementById('id_location');
+    const typeSelect = document.getElementById('id_type');
+    const techSpecsSection = document.getElementById('tech_specs_section');
+    const serialNumberContainer = document.getElementById('serial_number_container');
+    const markingCodeContainer = document.getElementById('marking_code_container');
+    
+    // Device types that should show technical specs
+    const techSpecsTypes = ['desktop', 'laptop', 'server'];
+    
+    // Device types that should hide serial number and marking code
+    const hideSerialMarkingTypes = ['Storage_Device'];
+    
+    // Function to toggle technical specs visibility
+    function toggleTechSpecs() {
+        if (typeSelect && techSpecsSection) {
+            const selectedType = typeSelect.value;
+            if (techSpecsTypes.includes(selectedType)) {
+                techSpecsSection.style.display = 'block';
+            } else {
+                techSpecsSection.style.display = 'none';
+            }
+        }
+    }
+    
+    // Function to toggle serial number and marking code visibility
+    function toggleSerialMarking() {
+        if (typeSelect) {
+            const selectedType = typeSelect.value;
+            const shouldHide = hideSerialMarkingTypes.includes(selectedType);
+            
+            if (serialNumberContainer) {
+                serialNumberContainer.style.display = shouldHide ? 'none' : 'block';
+            }
+            if (markingCodeContainer) {
+                markingCodeContainer.style.display = shouldHide ? 'none' : 'block';
+            }
+        }
+    }
+    
+    // Check on page load
+    toggleTechSpecs();
+    toggleSerialMarking();
+    
+    // Listen for type changes
+    if (typeSelect) {
+        typeSelect.addEventListener('change', function() {
+            toggleTechSpecs();
+            toggleSerialMarking();
+        });
+    }
+    
+    const regionTypeContainer = document.getElementById('region_type_container');
+    const dpuContainer = document.getElementById('dpu_container');
+    const dpuTypeContainer = document.getElementById('dpu_type_container');
+    const stationOrRoomContainer = document.getElementById('station_or_room_container');
+    
+    let currentRegion = '';
+    let currentDpu = '';
+    
+    // Reset all dependent dropdowns
+    function resetAll() {
+        regionTypeSelect.innerHTML = '<option value="">-- Select Type --</option>';
+        regionTypeSelect.disabled = true;
+        regionTypeContainer.style.display = 'none';
+        
+        dpuSelect.innerHTML = '<option value="">-- Select DPU --</option>';
+        dpuSelect.disabled = true;
+        dpuContainer.style.display = 'none';
+        
+        dpuTypeSelect.innerHTML = '<option value="">-- Select Type --</option>';
+        dpuTypeSelect.disabled = true;
+        dpuTypeContainer.style.display = 'none';
+        
+        stationRoomSelect.innerHTML = '<option value="">-- Select Station or Room --</option>';
+        stationRoomSelect.disabled = true;
+        stationOrRoomContainer.style.display = 'none';
+        
+        locationHidden.value = '';
+        currentRegion = '';
+        currentDpu = '';
+    }
+    
+    // Main Office / Region change handler
+    mainOfficeRegionSelect.addEventListener('change', function() {
+        const selectedValue = this.value;
+        resetAll();
+        
+        if (!selectedValue) {
+            return;
+        }
+        
+        if (selectedValue.startsWith('office_')) {
+            // Main office selected - load rooms directly
+            const officeName = selectedValue.replace('office_', '');
+            fetch(`{% url 'equipment:get_rooms' %}?office=${encodeURIComponent(officeName)}`)
+                .then(response => response.json())
+                .then(data => {
+                    stationRoomSelect.innerHTML = '';
+                    data.choices.forEach(choice => {
+                        const option = document.createElement('option');
+                        option.value = choice[0];
+                        option.textContent = choice[1];
+                        stationRoomSelect.appendChild(option);
+                    });
+                    stationRoomSelect.disabled = false;
+                    stationOrRoomContainer.style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading rooms:', error);
+                });
+        } else if (selectedValue.startsWith('region_')) {
+            // Region selected - show Region Type options
+            currentRegion = selectedValue.replace('region_', '');
+            regionTypeSelect.innerHTML = `
+                <option value="">-- Select Type --</option>
+                <option value="headquarter">Region Headquarter</option>
+                <option value="dpu">DPU</option>
+            `;
+            regionTypeSelect.disabled = false;
+            regionTypeContainer.style.display = 'block';
+        }
+    });
+    
+    // Region Type change handler
+    regionTypeSelect.addEventListener('change', function() {
+        const selectedType = this.value;
+        dpuSelect.innerHTML = '<option value="">-- Select DPU --</option>';
+        dpuSelect.disabled = true;
+        dpuContainer.style.display = 'none';
+        dpuTypeSelect.innerHTML = '<option value="">-- Select Type --</option>';
+        dpuTypeSelect.disabled = true;
+        dpuTypeContainer.style.display = 'none';
+        stationRoomSelect.innerHTML = '<option value="">-- Select Station or Room --</option>';
+        stationRoomSelect.disabled = true;
+        stationOrRoomContainer.style.display = 'none';
+        locationHidden.value = '';
+        
+        if (!selectedType || !currentRegion) {
+            return;
+        }
+        
+        if (selectedType === 'headquarter') {
+            // Load Region Headquarter offices
+            fetch(`{% url 'equipment:get_region_headquarter' %}?region=${encodeURIComponent(currentRegion)}`)
+                .then(response => response.json())
+                .then(data => {
+                    stationRoomSelect.innerHTML = '';
+                    data.choices.forEach(choice => {
+                        const option = document.createElement('option');
+                        option.value = choice[0];
+                        option.textContent = choice[1];
+                        stationRoomSelect.appendChild(option);
+                    });
+                    stationRoomSelect.disabled = false;
+                    stationOrRoomContainer.style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading region headquarter:', error);
+                });
+        } else if (selectedType === 'dpu') {
+            // Load DPUs
+            fetch(`{% url 'equipment:get_dpus' %}?region=${encodeURIComponent(currentRegion)}`)
+                .then(response => response.json())
+                .then(data => {
+                    dpuSelect.innerHTML = '';
+                    data.choices.forEach(choice => {
+                        const option = document.createElement('option');
+                        option.value = choice[0];
+                        option.textContent = choice[1];
+                        dpuSelect.appendChild(option);
+                    });
+                    dpuSelect.disabled = false;
+                    dpuContainer.style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading DPUs:', error);
+                });
+        }
+    });
+    
+    // DPU change handler
+    dpuSelect.addEventListener('change', function() {
+        const selectedValue = this.value;
+        dpuTypeSelect.innerHTML = '<option value="">-- Select Type --</option>';
+        dpuTypeSelect.disabled = true;
+        dpuTypeContainer.style.display = 'none';
+        stationRoomSelect.innerHTML = '<option value="">-- Select Station or Room --</option>';
+        stationRoomSelect.disabled = true;
+        stationOrRoomContainer.style.display = 'none';
+        locationHidden.value = '';
+        
+        if (!selectedValue) {
+            currentDpu = '';
+            return;
+        }
+        
+        currentDpu = selectedValue;
+        // Show DPU Type options
+        dpuTypeSelect.innerHTML = `
+            <option value="">-- Select Type --</option>
+            <option value="headquarter">DPU Headquarter</option>
+            <option value="stations">Stations</option>
+        `;
+        dpuTypeSelect.disabled = false;
+        dpuTypeContainer.style.display = 'block';
+    });
+    
+    // DPU Type change handler
+    dpuTypeSelect.addEventListener('change', function() {
+        const selectedType = this.value;
+        stationRoomSelect.innerHTML = '<option value="">-- Select Station or Room --</option>';
+        stationRoomSelect.disabled = true;
+        stationOrRoomContainer.style.display = 'none';
+        locationHidden.value = '';
+        
+        if (!selectedType || !currentRegion || !currentDpu) {
+            return;
+        }
+        
+        if (selectedType === 'headquarter') {
+            // Load DPU Headquarter offices
+            fetch(`{% url 'equipment:get_dpu_headquarter' %}?region=${encodeURIComponent(currentRegion)}&dpu=${encodeURIComponent(currentDpu)}`)
+                .then(response => response.json())
+                .then(data => {
+                    stationRoomSelect.innerHTML = '';
+                    data.choices.forEach(choice => {
+                        const option = document.createElement('option');
+                        option.value = choice[0];
+                        option.textContent = choice[1];
+                        stationRoomSelect.appendChild(option);
+                    });
+                    stationRoomSelect.disabled = false;
+                    stationOrRoomContainer.style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading DPU headquarter:', error);
+                });
+        } else if (selectedType === 'stations') {
+            // Load stations
+            fetch(`{% url 'equipment:get_stations' %}?region=${encodeURIComponent(currentRegion)}&dpu=${encodeURIComponent(currentDpu)}`)
+                .then(response => response.json())
+                .then(data => {
+                    stationRoomSelect.innerHTML = '';
+                    data.choices.forEach(choice => {
+                        const option = document.createElement('option');
+                        option.value = choice[0];
+                        option.textContent = choice[1];
+                        stationRoomSelect.appendChild(option);
+                    });
+                    stationRoomSelect.disabled = false;
+                    stationOrRoomContainer.style.display = 'block';
+                })
+                .catch(error => {
+                    console.error('Error loading stations:', error);
+                });
+        }
+    });
+    
+    // Station/Room/Office change handler - update hidden location field
+    stationRoomSelect.addEventListener('change', function() {
+        const selectedValue = this.value;
+        if (!selectedValue) {
+            locationHidden.value = '';
+            return;
+        }
+        
+        const mainOfficeRegion = mainOfficeRegionSelect.value;
+        const regionType = regionTypeSelect.value;
+        const dpu = dpuSelect.value;
+        const dpuType = dpuTypeSelect.value;
+        const stationRoom = selectedValue;
+        
+        // Build location path
+        let locationPath = '';
+        
+        if (mainOfficeRegion.startsWith('office_')) {
+            // Main office > Room
+            const officeName = mainOfficeRegion.replace('office_', '');
+            locationPath = `${officeName} > ${stationRoom}`;
+        } else if (mainOfficeRegion.startsWith('region_')) {
+            const regionName = mainOfficeRegion.replace('region_', '');
+            
+            if (regionType === 'headquarter') {
+                // Region > Region Headquarter > Office
+                locationPath = `${regionName} > Region Headquarter > ${stationRoom}`;
+            } else if (regionType === 'dpu' && dpu) {
+                if (dpuType === 'headquarter') {
+                    // Region > DPU > DPU Headquarter > Office
+                    locationPath = `${regionName} > ${dpu} > Headquarter > ${stationRoom}`;
+                } else if (dpuType === 'stations') {
+                    // Region > DPU > Station
+                    locationPath = `${regionName} > ${dpu} > ${stationRoom}`;
+                }
+            }
+        }
+        
+        locationHidden.value = locationPath;
+    });
+});
+    </script>
+{% endblock %}

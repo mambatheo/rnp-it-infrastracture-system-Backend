@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Equipment Inventory | Equipment Management{% endblock %}
+{% block content %}
+    <section class="py-10 px-4 md:px-10 max-w-[1440px] mx-auto">
+        <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-extrabold tracking-tight">Equipment Inventory</h1>
+                <p class="mt-2 text-sm text-text-muted">Browse and search all registered devices in the system.</p>
+            </div>
+            <div class="flex gap-3">
+                <a href="{% url 'equipment:add' %}"
+                   class="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-bold text-background-dark shadow-[0_0_25px_rgba(54,226,123,0.4)] hover:bg-primary/90 transition-colors">
+                    <span class="material-symbols-outlined text-base">add</span>
+                    New Equipment
+                </a>
+            </div>
+        </div>
+        <div class="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div class="relative w-full md:max-w-xs">
+                <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-text-muted text-base">
+                    search
+                </span>
+                <input type="text"
+                       placeholder="Search by serial, model, or type..."
+                       class="w-full rounded-lg border border-border-dark bg-surface-dark/60 pl-9 pr-3 py-2.5 text-sm placeholder:text-text-muted text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                       oninput="filterTable(this.value)" />
+            </div>
+            <p class="text-xs text-text-muted">
+                Total: <span id="equipment-count">{{ equipment_list|length }}</span> items
+            </p>
+        </div>
+        <div class="overflow-x-auto rounded-2xl bg-surface-card/80 border border-border-dark/60 shadow-soft">
+            <table class="min-w-full text-sm" id="equipment-table">
+                <thead class="text-xs uppercase tracking-wide text-text-muted border-b border-border-dark/70 bg-surface-dark/60">
+                    <tr>
+                        <th class="py-3 pl-4 pr-4 text-left">Serial</th>
+                        <th class="py-3 px-4 text-left">Type</th>
+                        <th class="py-3 px-4 text-left">Model</th>
+                        <th class="py-3 px-4 text-left">Location</th>
+                        <th class="py-3 px-4 text-left">Status</th>
+                        <th class="py-3 px-4 text-left">Assigned To</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for eq in equipment_list %}
+                        <tr class="border-b border-border-dark/40 last:border-0 hover:bg-surface-dark/70 transition-colors">
+                            <td class="py-3 pl-4 pr-4 font-mono text-xs text-text-muted">{{ eq.serial_number.upper|default:"—" }}</td>
+                            <td class="py-3 px-4 whitespace-nowrap">{{ eq.get_type_display|default:"—" }}</td>
+                            <td class="py-3 px-4">{{ eq.model|default:"—" }}</td>
+                            <td class="py-3 px-4 text-xs text-text-muted">{{ eq.office_location.name|default:"Not set" }}</td>
+                            <td class="py-3 px-4">
+                                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold {% if eq.status == 'active' %}bg-emerald-500/10 text-emerald-300 border border-emerald-500/40 {% elif eq.status == 'maintenance' %}bg-amber-500/10 text-amber-300 border border-amber-500/40 {% elif eq.status == 'damaged' %}bg-rose-500/10 text-rose-300 border border-rose-500/40 {% elif eq.status == 'retired' %}bg-slate-500/10 text-slate-300 border border-slate-500/40 {% else %}bg-slate-500/10 text-slate-300 border border-slate-500/30{% endif %}">
+                                    {{ eq.get_status_display }}
+                                </span>
+                            </td>
+                            <td class="py-3 px-4 text-xs text-text-muted">
+                                {% if eq.assigned_to %}
+                                    {{ eq.assigned_to.first_name }} {{ eq.assigned_to.last_name }}
+                                {% else %}
+                                    —
+                                {% endif %}
+                            </td>
+                        </tr>
+                    {% empty %}
+                        <tr>
+                            <td colspan="6" class="py-6 px-4 text-center text-sm text-text-muted">No equipment registered yet.</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% block extra_scripts %}
+        <script>
+    function filterTable(query) {
+        const q = query.toLowerCase();
+        const rows = document.querySelectorAll("#equipment-table tbody tr");
+        let visibleCount = 0;
+
+        rows.forEach((row) => {
+            const text = row.textContent.toLowerCase();
+            const match = text.includes(q);
+            row.style.display = match ? "" : "none";
+            if (match) visibleCount += 1;
+        });
+
+        const counter = document.getElementById("equipment-count");
+        if (counter) {
+            counter.textContent = visibleCount.toString();
+        }
+    }
+        </script>
+    {% endblock %}
+{% endblock %}

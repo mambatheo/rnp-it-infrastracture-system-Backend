@@ -1,0 +1,1 @@
+"web: gunicorn itinfra.wsgi:application" | Out-File -FilePath Procfile -Encoding utf8

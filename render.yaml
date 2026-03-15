@@ -1,0 +1,35 @@
+services:
+  # Backend Web Service
+  - type: web
+    name: itinfra-backend
+    env: python
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput && python manage.py migrate"
+    startCommand: "gunicorn itinfra.wsgi:application"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: itinfra-db
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "*" # We'll refine this later or use the Render URL
+
+  # Frontend Static Site
+  - type: static
+    name: itinfra-frontend
+    env: node
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: frontend/build
+    envVars:
+      - key: REACT_APP_API_URL
+        fromService:
+          type: web
+          name: itinfra-backend
+          property: url
+
+databases:
+  - name: itinfra-db
+    plan: free
