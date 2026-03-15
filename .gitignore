@@ -33,5 +33,9 @@ Thumbs.db
 # Docker
 Dockerfile
 .dockerignore
+#migration files
+**/migrations/*
+!**/migrations/__init__.py
+
 
 frontend/
