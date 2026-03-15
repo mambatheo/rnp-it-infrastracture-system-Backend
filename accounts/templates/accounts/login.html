@@ -1,0 +1,181 @@
+{% load static %}
+<!DOCTYPE html>
+<html class="dark" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>EQUIPMENT MANAGEMENT - Login</title>
+        <link href="https://fonts.googleapis.com" rel="preconnect" />
+        <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+        <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&amp;display=swap"
+              rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+              rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+              rel="stylesheet" />
+        <!-- Tailwind CSS with Config -->
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1c2620",
+                        "border-dark": "#3d5245",
+                        "text-muted": "#9eb7a8",
+                    },
+                    fontFamily: {
+                        "display": ["Manrope", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+        </script>
+    </head>
+    <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased overflow-x-hidden">
+        <div class="flex min-h-screen w-full flex-row">
+            <!-- Left Panel: Login Form -->
+            <div class="flex w-full flex-col justify-center px-4 py-12 sm:px-6 lg:w-1/2 lg:px-20 xl:px-24        bg-background-light dark:bg-background-dark relative">
+                <!-- Mobile/Top Logo -->
+                <div class="absolute top-8 left-8 lg:left-24 flex items-center gap-2 text-slate-900 dark:text-white">
+                    <div class="flex items-center gap-3 text-white mb-4">
+                        <span class="material-symbols-outlined text-primary text-4xl">roofing</span>
+                        <h2 class="text-2xl font-bold tracking-tight">EQUIPMENT MANAGEMENT</h2>
+                    </div>
+                </div>
+                <div class="mx-auto w-full max-w-sm lg:max-w-md mt-12 lg:mt-0">
+                    <div class="flex flex-col gap-2 text-left mb-10">
+                        <h1 class="text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl">Welcome back</h1>
+                        <p class="text-slate-500 dark:text-text-muted text-base">Manage your IT Equipment .</p>
+                    </div>
+                    {% if form.non_field_errors %}
+                        <div class="mb-4 rounded-lg bg-red-100 text-red-700 px-4 py-3 text-sm">{{ form.non_field_errors }}</div>
+                    {% endif %}
+                    <form method="POST" action="{% url 'login' %}" class="space-y-6">
+                        {% csrf_token %}
+                        <div>
+                            <label class="block text-sm font-medium leading-6 mb-2" for="email">Email/Phone</label>
+                            <div class="relative rounded-lg shadow-sm">
+                                <input class="block w-full rounded-lg border-0 py-3.5 pl-4 pr-10 text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary dark:bg-surface-dark dark:text-white dark:ring-border-dark dark:placeholder:text-text-muted sm:text-sm sm:leading-6 transition-colors"
+                                       id="email"
+                                       name="username"
+                                       placeholder="your unique credential"
+                                       type="text" />
+                                <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
+                                    <span class="material-symbols-outlined text-slate-400 dark:text-text-muted"
+                                          style="font-size: 20px">person</span>
+                                </div>
+                            </div>
+                            {% if form.username.errors %}
+                                {% for err in form.username.errors %}
+                                    <div class="text-[#ff0000] mb-3">
+                                        <span class="material-symbols-outlined text-[#ff0000] text-sm mx-2">warning</span>{{ err }}
+                                    </div>
+                                {% empty %}
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                        <!-- Password Input -->
+                        <div>
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="block text-sm font-medium leading-6" for="password">Password</label>
+                                <div class="text-sm">
+                                    <a class="font-semibold text-primary hover:text-green-400"
+                                       href="{% url 'forgot_password' %}">Forgot password?</a>
+                                </div>
+                            </div>
+                            <div class="relative rounded-lg shadow-sm">
+                                <input class="block w-full rounded-lg border-0 py-3.5 pl-4 pr-10 text-slate-900 ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-primary dark:bg-surface-dark dark:text-white dark:ring-border-dark dark:placeholder:text-text-muted sm:text-sm sm:leading-6 transition-colors"
+                                       id="password"
+                                       name="password"
+                                       placeholder="••••••••"
+                                       type="password" />
+                            </div>
+                            {% if form.password.errors %}
+                                {% for err in form.password.errors %}
+                                    <div class="text-[#ff0000] mb-3">
+                                        <span class="material-symbols-outlined text-[#ff0000] text-sm mx-2">warning</span>{{ err }}
+                                    </div>
+                                {% empty %}
+                                {% endfor %}
+                            {% endif %}
+                            <!-- Login Button -->
+                            <div>
+                                <button class="flex w-full justify-center rounded-lg bg-primary px-3 py-3.5 text-sm font-bold leading-6 text-[#111714] shadow-sm hover:bg-green-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary transition-colors"
+                                        type="submit">Log In</button>
+                            </div>
+                        </div>
+                    </form>
+                    <!-- Divider -->
+                    <div class="hidden relative mt-8">
+                        <div aria-hidden="true" class="absolute inset-0 flex items-center">
+                            <div class="w-full border-t border-slate-200 dark:border-border-dark"></div>
+                        </div>
+                        <div class="relative flex justify-center text-sm font-medium leading-6">
+                            <span class="bg-background-light px-6 text-slate-500 dark:bg-background-dark dark:text-text-muted">Or continue with</span>
+                        </div>
+                    </div>
+                    <!-- Social Login -->
+                    <div class="mt-6">
+                        <button class="hidden flex w-full items-center justify-center gap-3 rounded-lg bg-white px-3 py-3 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 dark:bg-surface-dark dark:text-white dark:ring-border-dark dark:hover:bg-[#25322b] transition-colors"
+                                type="button">
+                            <svg aria-hidden="true" class="h-5 w-5" viewbox="0 0 24 24">
+                                <path d="M12.0003 20.45C16.667 20.45 20.5836 17.2755 21.9902 12.9841H12.0003V9.55017H25.3263C25.4851 10.3703 25.5683 11.218 25.5683 12.0834C25.5683 19.8638 19.4939 26.1667 12.0003 26.1667C4.17643 26.1667 -2.16641 19.8239 -2.16641 12.0001C-2.16641 4.17625 4.17643 -2.16656 12.0003 -2.16656C15.4299 -2.16656 18.5392 -1.02875 21.0102 0.880469L17.8841 4.00656C16.8924 3.08562 14.8878 2.25365 12.0003 2.25365C6.82773 2.25365 2.58553 6.69172 2.58553 12.0001C2.58553 17.3084 6.82773 21.7465 12.0003 21.7465V20.45Z" fill="currentColor" transform="translate(2.16641 2.16656) scale(0.830508)">
+                                </path>
+                            </svg>
+                            Google
+                        </button>
+                    </div>
+                    <!-- Register Link -->
+                    <p class="mt-10 text-center text-sm text-slate-500 dark:text-text-muted">
+                        New to EQUIPMENT MANAGEMENT?
+                        <a class="font-semibold leading-6 text-primary hover:text-green-400"
+                           href="{% url 'register' %}">Create an account</a>
+                    </p>
+                </div>
+            </div>
+            <!-- Right Panel: Visual Showcase -->
+            <div class="hidden lg:flex w-1/2 relative flex-col justify-end p-12 overflow-hidden bg-surface-dark">
+                <!-- IT Equipment Background Image -->
+                <div class="absolute inset-0 h-full w-full bg-cover bg-center opacity-30"
+                     style="background-image: url('https://images.unsplash.com/photo-1550751827-4bd374c3f58b?w=1200&q=80')">
+                </div>
+                <!-- Dark Gradient Overlay -->
+                <div class="absolute inset-0 bg-gradient-to-t from-background-dark via-background-dark/80 to-transparent"></div>
+                <!-- Content -->
+                <div class="relative z-10 flex flex-col gap-6 max-w-xl">
+                    <div class="flex items-center gap-3 text-white mb-4">
+                        <span class="material-symbols-outlined text-primary text-4xl">inventory_2</span>
+                        <h2 class="text-2xl font-bold tracking-tight">EQUIPMENT MANAGEMENT</h2>
+                    </div>
+                    <h1 class="text-4xl font-extrabold leading-tight tracking-tight text-white xl:text-5xl">
+                        Track Equipment,
+                        <br />
+                        <span class="text-primary">Streamline Operations.</span>
+                    </h1>
+                    <p class="text-lg text-text-muted font-normal max-w-md">
+                        Join  equipment management system to efficiently track and manage IT resources across all regions.
+                    </p>
+                    <div class="flex gap-4 mt-4">
+                        <div class="flex -space-x-3 rtl:space-x-reverse">
+                            <div class="w-10 h-10 flex items-center justify-center border-2 border-background-dark rounded-full bg-primary/20">
+                                <span class="material-symbols-outlined text-primary text-xl">desktop_windows</span>
+                            </div>
+                            <div class="w-10 h-10 flex items-center justify-center border-2 border-background-dark rounded-full bg-primary/20">
+                                <span class="material-symbols-outlined text-primary text-xl">print</span>
+                            </div>
+                            <div class="w-10 h-10 flex items-center justify-center border-2 border-background-dark rounded-full bg-primary/20">
+                                <span class="material-symbols-outlined text-primary text-xl">laptop</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

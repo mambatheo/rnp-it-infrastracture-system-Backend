@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>GUKODESHA - Verify Account</title>
+        <link href="https://fonts.googleapis.com" rel="preconnect" />
+        <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+        <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&amp;display=swap"
+              rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+              rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+              rel="stylesheet" />
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1c2e24",
+                    },
+                    fontFamily: {
+                        "display": ["Manrope", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+        </script>
+    </head>
+    <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white overflow-x-hidden antialiased selection:bg-primary selection:text-background-dark">
+        <div class="relative flex min-h-screen w-full flex-col">
+            <header class="flex items-center justify-between whitespace-nowrap border-b border-solid border-gray-200 dark:border-[#29382f] px-6 lg:px-10 py-4 bg-background-light dark:bg-background-dark z-20">
+                <div class="flex items-center gap-4">
+                    <div class="size-8 text-primary">
+                        <svg class="w-full h-full"
+                             fill="none"
+                             viewbox="0 0 48 48"
+                             xmlns="http://www.w3.org/2000/svg">
+                            <path d="M42.4379 44C42.4379 44 36.0744 33.9038 41.1692 24C46.8624 12.9336 42.2078 4 42.2078 4L7.01134 4C7.01134 4 11.6577 12.932 5.96912 23.9969C0.876273 33.9029 7.27094 44 7.27094 44L42.4379 44Z" fill="currentColor">
+                            </path>
+                        </svg>
+                    </div>
+                    <h2 class="text-lg font-bold leading-tight tracking-[-0.015em] hidden sm:block">GUKODESHA</h2>
+                </div>
+                <div class="flex flex-1 justify-end gap-4 sm:gap-8 items-center">
+                    <div class="hidden md:flex items-center gap-9">
+                        <a class="text-sm font-medium leading-normal hover:text-primary transition-colors"
+                           href="#">Home</a>
+                        <a class="text-sm font-medium leading-normal hover:text-primary transition-colors"
+                           href="#">About</a>
+                        <a class="text-sm font-medium leading-normal hover:text-primary transition-colors"
+                           href="#">Contact</a>
+                    </div>
+                    <button class="flex min-w-[84px] cursor-pointer items-center justify-center overflow-hidden rounded-lg h-10 px-4 bg-gray-200 dark:bg-[#29382f] hover:bg-gray-300 dark:hover:bg-[#3d5245] transition-colors text-sm font-bold leading-normal tracking-[0.015em]">
+                        <span class="truncate">Help</span>
+                    </button>
+                </div>
+            </header>
+            <div class="flex flex-1 h-full w-full">
+                <div class="hidden lg:block w-1/2 relative bg-surface-dark overflow-hidden">
+                    <div class="absolute inset-0 bg-gradient-to-b from-background-dark/50 to-background-dark/90 z-10"></div>
+                    <img alt="Abstract geometric housing structure representing community and stability"
+                         class="absolute inset-0 h-full w-full object-cover opacity-60 mix-blend-overlay"
+                         data-alt="Abstract geometric housing structure representing community and stability"
+                         src="https://lh3.googleusercontent.com/aida-public/AB6AXuAwp-UXlGbFBK_rtddP15ppdybJ8NbH_89L8WkMSO_aQfRZ7RldYLR2pUDxCW0TA02TpUybOnMDcP4rzmuKdN26-i-YlKeW3VLO3M3T_nQwm45z-tCThknkr6T04sk9GN8d_pN6CVW-sySJBX3AT6e9k4pPuGX3lAYExkIWt6xBjzbsDuPU1t-JbObjn-0rQB4lz61YC6nlVW0Lb0TSa4iTzMFfF9HZjmRpPVHiZxj4KzovIomNNpDjNfdbCL-FiOBVFqdIvF2h6d4" />
+                    <div class="relative z-20 flex flex-col justify-end h-full p-16 pb-24">
+                        <blockquote class="text-2xl font-bold leading-snug max-w-lg mb-4 text-white">
+                            "Secure living and trusted communities start with verified identities. Welcome to GUKODESHA."
+                        </blockquote>
+                        <p class="text-[#9eb7a8]">Connecting the Great Lakes Region.</p>
+                        {% if messages %}
+                            {% for message in messages %}
+                                {% if message.tags == "success" %}
+                                    <div class="bg-green-100 border border-green-300 text-green-800 p-4 rounded-md shadow-lg">
+                                        <p>{{ message }}</p>
+                                    </div>
+                                {% elif message.tags == "error" %}
+                                    <div class="bg-red-100 border border-red-300 text-red-800 p-4 rounded-md shadow-lg">
+                                        <p>{{ message }}</p>
+                                    </div>
+                                {% elif message.tags == "info" %}
+                                    <div class="bg-blue-100 border border-blue-300 text-blue-800 p-4 rounded-md shadow-lg">
+                                        <p>{{ message }}</p>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="w-full lg:w-1/2 flex items-center justify-center p-6 bg-background-light dark:bg-background-dark relative">
+                    <div class="absolute inset-0 opacity-[0.03] pointer-events-none lg:hidden"
+                         style="background-image: radial-gradient(#36e27b 1px, transparent 1px);
+                                background-size: 24px 24px"></div>
+                    <form method="post" id="verification-form">
+                        {% csrf_token %}
+                        <div class="w-full max-w-[480px] flex flex-col gap-8 z-10">
+                            <div class="flex flex-col gap-3 text-center sm:text-left">
+                                <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-2 mx-auto sm:mx-0">
+                                    <span class="material-symbols-outlined text-primary text-2xl">mark_email_unread</span>
+                                </div>
+                                <h1 class="text-3xl sm:text-4xl font-black leading-tight tracking-[-0.033em]">Verify your account</h1>
+                                <p class="text-gray-600 dark:text-[#9eb7a8] text-base font-normal leading-normal">
+                                    We’ve sent a 6-digit verification code to <strong class="text-slate-900 dark:text-white">{{ email }}</strong>. Enter the code below to confirm your identity.
+                                </p>
+
+                            </div>
+                            <div class="flex justify-center sm:justify-start">
+                                <fieldset class="flex gap-2 sm:gap-3 md:gap-4">
+                                    <!-- Input 1 -->
+                                    <input autocomplete="one-time-code"
+                                           autofocus=""
+                                           class="code-input flex h-14 w-10 sm:h-16 sm:w-14 text-center rounded-lg bg-gray-100 dark:bg-[#1c2e24] focus:bg-white dark:focus:bg-[#23382c] border-2 border-transparent focus:border-primary text-xl sm:text-2xl font-bold leading-normal outline-none transition-all placeholder:text-gray-400"
+                                           inputmode="numeric"
+                                           maxlength="1"
+                                           oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value.length &gt;= 1) { this.nextElementSibling?.focus(); }"
+                                           onkeydown="if(event.key==='Backspace' &amp;&amp; this.value==='') { this.previousElementSibling?.focus(); }"
+                                           type="text"
+                                           value="" />
+                                    <!-- Input 2 -->
+                                    <input class="code-input flex h-14 w-10 sm:h-16 sm:w-14 text-center rounded-lg bg-gray-100 dark:bg-[#1c2e24] focus:bg-white dark:focus:bg-[#23382c] border-2 border-transparent focus:border-primary text-xl sm:text-2xl font-bold leading-normal outline-none transition-all placeholder:text-gray-400"
+                                           inputmode="numeric"
+                                           maxlength="1"
+                                           oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value.length &gt;= 1) { this.nextElementSibling?.focus(); }"
+                                           onkeydown="if(event.key==='Backspace' &amp;&amp; this.value==='') { this.previousElementSibling?.focus(); }"
+                                           type="text"
+                                           value="" />
+                                    <!-- Input 3 -->
+                                    <input class="code-input flex h-14 w-10 sm:h-16 sm:w-14 text-center rounded-lg bg-gray-100 dark:bg-[#1c2e24] focus:bg-white dark:focus:bg-[#23382c] border-2 border-transparent focus:border-primary text-xl sm:text-2xl font-bold leading-normal outline-none transition-all placeholder:text-gray-400"
+                                           inputmode="numeric"
+                                           maxlength="1"
+                                           oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value.length &gt;= 1) { this.nextElementSibling?.focus(); }"
+                                           onkeydown="if(event.key==='Backspace' &amp;&amp; this.value==='') { this.previousElementSibling?.focus(); }"
+                                           type="text"
+                                           value="" />
+                                    <!-- Input 4 -->
+                                    <input class="code-input flex h-14 w-10 sm:h-16 sm:w-14 text-center rounded-lg bg-gray-100 dark:bg-[#1c2e24] focus:bg-white dark:focus:bg-[#23382c] border-2 border-transparent focus:border-primary text-xl sm:text-2xl font-bold leading-normal outline-none transition-all placeholder:text-gray-400"
+                                           inputmode="numeric"
+                                           maxlength="1"
+                                           oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value.length &gt;= 1) { this.nextElementSibling?.focus(); }"
+                                           onkeydown="if(event.key==='Backspace' &amp;&amp; this.value==='') { this.previousElementSibling?.focus(); }"
+                                           type="text"
+                                           value="" />
+                                    <!-- Input 5 -->
+                                    <input class="code-input flex h-14 w-10 sm:h-16 sm:w-14 text-center rounded-lg bg-gray-100 dark:bg-[#1c2e24] focus:bg-white dark:focus:bg-[#23382c] border-2 border-transparent focus:border-primary text-xl sm:text-2xl font-bold leading-normal outline-none transition-all placeholder:text-gray-400"
+                                           inputmode="numeric"
+                                           maxlength="1"
+                                           oninput="this.value=this.value.replace(/[^0-9]/g,''); if(this.value.length &gt;= 1) { this.nextElementSibling?.focus(); }"
+                                           onkeydown="if(event.key==='Backspace' &amp;&amp; this.value==='') { this.previousElementSibling?.focus(); }"
+                                           type="text"
+                                           value="" />
+                                    <!-- Input 6 -->
+                                    <input class="code-input flex h-14 w-10 sm:h-16 sm:w-14 text-center rounded-lg bg-gray-100 dark:bg-[#1c2e24] focus:bg-white dark:focus:bg-[#23382c] border-2 border-transparent focus:border-primary text-xl sm:text-2xl font-bold leading-normal outline-none transition-all placeholder:text-gray-400"
+                                           inputmode="numeric"
+                                           maxlength="1"
+                                           oninput="this.value=this.value.replace(/[^0-9]/g,'')"
+                                           onkeydown="if(event.key==='Backspace' &amp;&amp; this.value==='') { this.previousElementSibling?.focus(); }"
+                                           type="text"
+                                           value="" />
+                                </fieldset>
+                            </div>
+                            <!-- Timer -->
+                            <div class="flex items-center justify-center sm:justify-start gap-4">
+                                <div class="flex items-center gap-2 text-gray-500 dark:text-gray-400">
+                                    <span class="material-symbols-outlined text-xl">timer</span>
+                                    <span class="text-sm font-medium">Code expires in:</span>
+                                </div>
+                                <div class="flex items-center">
+                                    <span id="timer" class="font-mono text-lg font-bold text-primary">14:59</span>
+                                </div>
+                            </div>
+                            <!-- Actions -->
+                            <div class="flex flex-col gap-4">
+                                <input type="hidden" name="code" id="final-code">
+                                <button class="flex w-full cursor-pointer items-center justify-center overflow-hidden rounded-lg h-12 px-5 bg-primary hover:bg-green-400 text-background-dark text-base font-bold leading-normal tracking-[0.015em] transition-all shadow-[0_0_20px_rgba(54,226,123,0.3)] hover:shadow-[0_0_30px_rgba(54,226,123,0.5)]">
+                                    <span class="truncate">Verify Account</span>
+                                </button>
+                                <div class="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t border-gray-200 dark:border-[#29382f]">
+                                    <p class="text-sm text-gray-500 dark:text-gray-400">
+                                        Didn't receive the code?
+                                        <button class="text-slate-900 dark:text-white font-bold hover:text-primary transition-colors underline decoration-dotted underline-offset-4 ml-1">
+                                            <a href="{% url 'register' %}">Restart</a>
+                                        </button>
+                                    </p>
+                                    <a class="flex items-center gap-1 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-primary transition-colors"
+                                       href="{% url 'login' %}">
+                                        <span class="material-symbols-outlined text-sm">arrow_back</span>
+                                        Back to Login
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <script>
+            const TOTAL_TIME = 15 * 60;           
+            let remainingTime = TOTAL_TIME;
+            const timerElement = document.getElementById("timer");
+            const verifyButton = document.querySelector("button[type='submit']");
+
+            const countdown = setInterval(() => {
+                const minutes = Math.floor(remainingTime / 60);
+                const seconds = remainingTime % 60;
+
+                timerElement.textContent =
+                    `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+                if (remainingTime <= 0) {
+                    clearInterval(countdown);
+                    timerElement.textContent = "00:00";
+                    timerElement.classList.remove("text-primary");
+                    timerElement.classList.add("text-red-500");
+
+                    verifyButton.disabled = true;
+                    verifyButton.classList.add("opacity-50", "cursor-not-allowed");
+                }
+
+                remainingTime--;
+            }, 1000);
+
+            
+            const inputs = document.querySelectorAll(".code-input");
+            const hiddenInput = document.getElementById("final-code");
+
+            function updateFinalCode() {
+                let code = "";
+                inputs.forEach(input => {
+                    code += input.value || "";
+                });
+                hiddenInput.value = code;
+            }
+
+            inputs.forEach((input, index) => {
+                input.addEventListener("input", () => {
+                    updateFinalCode();
+
+                    if (input.value && index < inputs.length - 1) {
+                        inputs[index + 1].focus();
+                    }
+                });
+
+                input.addEventListener("keydown", (e) => {
+                    if (e.key === "Backspace" && !input.value && index > 0) {
+                        inputs[index - 1].focus();
+                    }
+                });
+            });
+
+            document.getElementById("verification-form").addEventListener("submit", (e) => {
+                updateFinalCode();
+
+                if (hiddenInput.value.length !== 6) {
+                    e.preventDefault();
+                    alert("Please enter the 6-digit verification code.");
+                }
+
+                if (remainingTime <= 0) {
+                    e.preventDefault();
+                    alert("Verification code has expired. Please request a new one.");
+                }
+            });
+        </script>
+    </body>
+</html>

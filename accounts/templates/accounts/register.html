@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html class="dark" lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+        <title>Equipment Management - Register</title>
+        <link href="https://fonts.googleapis.com" rel="preconnect" />
+        <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect" />
+        <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&display=swap" rel="stylesheet" />
+        <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
+        <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+        <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#38e07b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#122017",
+                        "surface-dark": "#1c2620",
+                        "border-dark": "#3d5245",
+                        "text-muted": "#9eb7a8"
+                    },
+                    fontFamily: {
+                        "display": ["Manrope", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+                },
+            },
+        }
+        </script>
+        <style>
+            .no-scrollbar::-webkit-scrollbar {
+                display: none;
+            }
+            .no-scrollbar {
+                -ms-overflow-style: none;
+                scrollbar-width: none;
+            }
+        </style>
+    </head>
+    <body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-hidden">
+        <div class="flex h-screen w-full">
+            <!-- Left Side - Hero Section -->
+            <div class="hidden lg:flex w-1/2 relative flex-col justify-end p-12 overflow-hidden bg-surface-dark">
+                <div class="absolute inset-0 z-0">
+                    <img alt="XYZ equipment and technology"
+                         class="w-full h-full object-cover opacity-60 mix-blend-overlay"
+                         src="https://images.unsplash.com/photo-1551836022-d5d88e9218df?w=1200&q=80" />
+                    <div class="absolute inset-0 bg-gradient-to-t from-background-dark via-background-dark/80 to-transparent"></div>
+                </div>
+                <div class="relative z-10 flex flex-col gap-6 max-w-xl">
+                    <div class="flex items-center gap-3 text-white mb-4">
+                        <span class="material-symbols-outlined text-primary text-4xl">inventory_2</span>
+                        <h2 class="text-2xl font-bold tracking-tight">EQUIPMENT MANAGEMENT</h2>
+                    </div>
+                    <h1 class="text-4xl font-extrabold leading-tight tracking-tight text-white xl:text-5xl">
+                        Track Equipment,
+                        <br />
+                        <span class="text-primary">Streamline Operations.</span>
+                    </h1>
+                    <p class="text-lg text-text-muted font-normal max-w-md">
+                        Join the Rwanda XYZ XYZ equipment management system to efficiently track and manage IT resources across all regions.
+                    </p>
+                    <div class="flex gap-4 mt-4">
+                        <div class="flex -space-x-3 rtl:space-x-reverse">
+                            <div class="w-10 h-10 flex items-center justify-center border-2 border-background-dark rounded-full bg-primary/20">
+                                <span class="material-symbols-outlined text-primary text-xl">person</span>
+                            </div>
+                            <div class="w-10 h-10 flex items-center justify-center border-2 border-background-dark rounded-full bg-primary/20">
+                                <span class="material-symbols-outlined text-primary text-xl">engineering</span>
+                            </div>
+                            <div class="w-10 h-10 flex items-center justify-center border-2 border-background-dark rounded-full bg-primary/20">
+                                <span class="material-symbols-outlined text-primary text-xl">admin_panel_settings</span>
+                            </div>
+                            <a class="flex items-center justify-center w-10 h-10 text-xs font-medium text-background-dark bg-primary border-2 border-background-dark rounded-full hover:bg-primary/80" href="#">All</a>
+                        </div>
+                        <div class="flex flex-col justify-center">
+                            <span class="text-sm font-bold text-white">Trusted Platform</span>
+                            <span class="text-xs text-text-muted">Secure & Verified</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side - Registration Form -->
+            <div class="w-full lg:w-1/2 flex flex-col h-full overflow-y-auto no-scrollbar relative bg-background-light dark:bg-background-dark">
+                <!-- Mobile Header -->
+                <div class="lg:hidden flex items-center justify-between p-6 border-b border-border-dark bg-surface-dark">
+                    <div class="flex items-center gap-2 text-white">
+                        <span class="material-symbols-outlined text-primary">inventory_2</span>
+                        <span class="font-bold text-lg tracking-tight">EQUIPMENT</span>
+                    </div>
+                    <a class="text-sm text-primary font-medium" href="{% url 'login' %}">Log In</a>
+                </div>
+
+                <!-- Form Container -->
+                <div class="flex-1 flex items-center justify-center p-6 sm:p-12 lg:p-20">
+                    <div class="w-full max-w-lg flex flex-col gap-8">
+                        <div class="flex flex-col gap-2">
+                            <h2 class="text-3xl font-bold text-slate-900 dark:text-white leading-tight">Create your account</h2>
+                            <p class="text-slate-500 dark:text-text-muted">Enter your details to register in the system.</p>
+                        </div>
+
+                        <!-- Messages -->
+                        {% if messages %}
+                            {% for message in messages %}
+                                {% if message.tags == "success" %}
+                                    <div class="bg-green-100 border border-green-300 text-green-800 p-4 rounded-md shadow-lg">
+                                        <p>{{ message }}</p>
+                                    </div>
+                                {% elif message.tags == "error" %}
+                                    <div class="bg-red-100 border border-red-300 text-red-800 p-4 rounded-md shadow-lg">
+                                        <p>{{ message }}</p>
+                                    </div>
+                                {% elif message.tags == "info" %}
+                                    <div class="bg-blue-100 border border-blue-300 text-blue-800 p-4 rounded-md shadow-lg">
+                                        <p>{{ message }}</p>
+                                    </div>
+                                {% endif %}
+                            {% endfor %}
+                        {% endif %}
+
+                        <!-- Registration Form -->
+                        <form method="post" action="{% url 'register' %}" class="flex flex-col gap-6">
+                            {% if form.non_field_errors %}
+                                <div class="rounded-lg bg-red-50 text-red-700 text-sm p-3">{{ form.non_field_errors }}</div>
+                            {% endif %}
+                            {% csrf_token %}
+
+                            <!-- Role Selection -->
+                            <div class="flex flex-col gap-3">
+                                <label class="text-sm font-medium text-slate-700 dark:text-white">Select Role</label>
+                                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    <label class="relative cursor-pointer group">
+                                        <input class="peer sr-only" name="role" type="radio" value="TECHNICIAN" />
+                                        <div class="flex flex-col items-center justify-center rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center transition-all peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-primary hover:border-primary/50 h-full">
+                                            <span class="material-symbols-outlined mb-2 text-2xl">engineering</span>
+                                            <span class="text-xs font-semibold">Technician</span>
+                                        </div>
+                                        <div class="absolute top-2 right-2 hidden peer-checked:block text-primary">
+                                            <span class="material-symbols-outlined text-lg filled">check_circle</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="relative cursor-pointer group">
+                                        <input class="peer sr-only" name="role" type="radio" value="IT_STAFF" />
+                                        <div class="flex flex-col items-center justify-center rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center transition-all peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-primary hover:border-primary/50 h-full">
+                                            <span class="material-symbols-outlined mb-2 text-2xl">computer</span>
+                                            <span class="text-xs font-semibold">IT Staff</span>
+                                        </div>
+                                        <div class="absolute top-2 right-2 hidden peer-checked:block text-primary">
+                                            <span class="material-symbols-outlined text-lg filled">check_circle</span>
+                                        </div>
+                                    </label>
+
+                                    <label class="relative cursor-pointer group">
+                                        <input checked class="peer sr-only" name="role" type="radio" value="USER" />
+                                        <div class="flex flex-col items-center justify-center rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark p-4 text-center transition-all peer-checked:border-primary peer-checked:bg-primary/10 peer-checked:text-primary hover:border-primary/50 h-full">
+                                            <span class="material-symbols-outlined mb-2 text-2xl">person</span>
+                                            <span class="text-xs font-semibold">User</span>
+                                        </div>
+                                       
+                                        <div class="absolute top-2 right-2 hidden peer-checked:block text-primary">
+                                            <span class="material-symbols-outlined text-lg filled">check_circle</span>
+                                        </div>
+                                    </label>
+                                </div>
+                                {% if form.role.errors %}<p class="text-xs text-red-600">{{ form.role.errors.0 }}</p>{% endif %}
+                            </div>
+
+                            <div class="flex flex-col gap-4">
+                                <!-- Personal Number (PN) -->
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-sm font-medium text-slate-700 dark:text-white">Personal Number (PN) <span class="text-red-500">*</span></label>
+                                    <input class="w-full rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark px-4 h-12 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-base"
+                                           placeholder="e.g. 12345"
+                                           type="text"
+                                           required
+                                           maxlength="5"
+                                           name="pn" />
+                                    <p class="text-xs text-slate-500 dark:text-text-muted">5-digit personal identification number</p>
+                                    {% if form.pn.errors %}<p class="text-xs text-red-600">{{ form.pn.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <!-- First Name -->
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-sm font-medium text-slate-700 dark:text-white">First Name <span class="text-red-500">*</span></label>
+                                    <input class="w-full rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark px-4 h-12 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-base"
+                                           placeholder="e.g. Jean"
+                                           type="text"
+                                           required
+                                           name="first_name" />
+                                    {% if form.first_name.errors %}<p class="text-xs text-red-600">{{ form.first_name.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <!-- Last Name -->
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-sm font-medium text-slate-700 dark:text-white">Last Name <span class="text-red-500">*</span></label>
+                                    <input class="w-full rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark px-4 h-12 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-base"
+                                           placeholder="e.g. Mugisha"
+                                           type="text"
+                                           required
+                                           name="last_name" />
+                                    {% if form.last_name.errors %}<p class="text-xs text-red-600">{{ form.last_name.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <!-- Email -->
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-sm font-medium text-slate-700 dark:text-white">Email Address <span class="text-red-500">*</span></label>
+                                    <input class="w-full rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark px-4 h-12 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-base"
+                                           placeholder="name@gmail.com"
+                                           type="email"
+                                           required
+                                           name="email" />
+                                    {% if form.email.errors %}<p class="text-xs text-red-600">{{ form.email.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <!-- Phone Number -->
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-sm font-medium text-slate-700 dark:text-white">Phone Number <span class="text-red-500">*</span></label>
+                                    <input class="w-full rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark px-4 h-12 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-base"
+                                           placeholder="0781234567"
+                                           type="tel"
+                                           required
+                                           maxlength="10"
+                                           name="phone_number" />
+                                    <p class="text-xs text-slate-500 dark:text-text-muted">10-digit phone number</p>
+                                    {% if form.phone_number.errors %}<p class="text-xs text-red-600">{{ form.phone_number.errors.0 }}</p>{% endif %}
+                                </div>
+
+                            
+
+                                <!-- Password -->
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-sm font-medium text-slate-700 dark:text-white">Password <span class="text-red-500">*</span></label>
+                                    <div class="relative">
+                                        <input id="password"
+                                               class="w-full rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark px-4 h-12 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-base pr-10"
+                                               placeholder="Create a password"
+                                               type="password"
+                                               required
+                                               name="password" />
+                                        <button class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-text-muted hover:text-slate-600 dark:hover:text-white"
+                                                type="button"
+                                                onclick="togglePassword('password', this)">
+                                            <span class="material-symbols-outlined text-xl">visibility</span>
+                                        </button>
+                                    </div>
+                                    <p class="text-xs text-slate-500 dark:text-text-muted">Must be at least 8 characters.</p>
+                                    {% if form.password.errors %}<p class="text-xs text-red-600">{{ form.password.errors.0 }}</p>{% endif %}
+                                </div>
+
+                                <!-- Confirm Password -->
+                                <div class="flex flex-col gap-1.5">
+                                    <label class="text-sm font-medium text-slate-700 dark:text-white">Confirm Password <span class="text-red-500">*</span></label>
+                                    <div class="relative">
+                                        <input id="re_password"
+                                               name="re_password"
+                                               type="password"
+                                               required
+                                               class="w-full rounded-lg border border-slate-200 dark:border-border-dark bg-white dark:bg-surface-dark px-4 h-12 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-text-muted focus:border-primary focus:ring-1 focus:ring-primary transition-colors text-base pr-10"
+                                               placeholder="Repeat password" />
+                                        <button class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-text-muted hover:text-slate-600 dark:hover:text-white"
+                                                type="button"
+                                                onclick="togglePassword('re_password', this)">
+                                            <span class="material-symbols-outlined text-xl">visibility</span>
+                                        </button>
+                                    </div>
+                                    {% if form.re_password.errors %}<p class="text-xs text-red-600">{{ form.re_password.errors.0 }}</p>{% endif %}
+                                </div>
+                            </div>
+
+                            <button class="mt-2 w-full flex items-center justify-center gap-2 rounded-lg bg-primary h-12 px-6 text-background-dark text-base font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                                    type="submit">
+                                Create Account
+                                <span class="material-symbols-outlined text-lg">arrow_forward</span>
+                            </button>
+                        </form>
+
+                        <div class="text-center mt-2">
+                            <p class="text-sm text-slate-500 dark:text-text-muted">
+                                Already have an account?
+                                <a class="font-bold text-primary hover:text-primary/80 transition-colors" href="{% url 'login' %}">Log In</a>
+                            </p>
+                        </div>
+
+                       
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            function togglePassword(inputId, button) {
+                const input = document.getElementById(inputId);
+                const icon = button.querySelector('.material-symbols-outlined');
+                
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    icon.textContent = 'visibility_off';
+                } else {
+                    input.type = 'password';
+                    icon.textContent = 'visibility';
+                }
+            }
+        </script>
+    </body>
+</html>
