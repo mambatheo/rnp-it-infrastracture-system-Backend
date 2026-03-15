@@ -85,10 +85,10 @@ else:
             'PASSWORD': os.getenv("DEV_DB_PASSWORD"),
             'HOST': os.getenv("localhost"),
             'PORT': os.getenv("port"),
-            # 'OPTIONS': {
-            #     'sslmode': 'require',
-            # },
-            # 'CONN_MAX_AGE': 600,
+            'OPTIONS': {
+                 'sslmode': 'require',
+            },
+             'CONN_MAX_AGE': 600,
         }
     }
 
