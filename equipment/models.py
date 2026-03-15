@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinLengthValidator, MaxLengthValidator
@@ -589,10 +589,12 @@ class Deployment(models.Model):
         verbose_name_plural = _("Deployments")
 
     def __str__(self):
-        recipient = (
-            self.issued_to_user
-            or str(self.issued_to_office)  if self.issued_to_office_id  else None
-            or str(self.issued_to_unit)    if self.issued_to_unit_id    else None
-            or "Unknown"
-        )
+        if self.issued_to_user:
+            recipient = self.issued_to_user
+        elif self.issued_to_office_id:
+            recipient = str(self.issued_to_office)
+        elif self.issued_to_unit_id:
+            recipient = str(self.issued_to_unit)
+        else:
+            recipient = "Unknown"
         return f"{self.equipment} → {recipient} ({self.issued_date})"

@@ -18,7 +18,7 @@ from reportlab.platypus import (
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from .models import Equipment, EquipmentCategory, EquipmentStatus, Stock
+from .models import Equipment, EquipmentCategory, EquipmentStatus, Stock, Unit, Region, DPU
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -821,7 +821,7 @@ def generate_stock_pdf_by_type(equipment_type):
 #  UNIT / REGION / DPU REPORTS  — shared fields
 # ═════════════════════════════════════════════════════════════════
 
-from .models import Unit, Region, DPU
+
 
 UNIT_FIELDS = [
     "S/N", "Serial Number", "Marking Code",

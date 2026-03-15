@@ -118,10 +118,15 @@ class Command(BaseCommand):
         self.stdout.write(f"Generating {total} records...")
         for i in range(total):
             eq_type, b_name, m_name, extra = random.choice(CATALOGUE)
+            brand_cat = {
+                'Desktop': cats['Computer'], 'Laptop': cats['Computer'],
+                'Server': cats['Server'], 'Printer': cats['Printer'],
+                'UPS': cats['Power'],
+            }.get(eq_type, cats['Computer'])
             if b_name not in brands:
                 brands[b_name] = Brand.objects.get_or_create(
-                    name=b_name, 
-                    defaults={'category': cats.get(eq_type, cats['Computer'])}
+                    name=b_name,
+                    defaults={'category': brand_cat}
                 )[0]
 
             # Pick consistent location
