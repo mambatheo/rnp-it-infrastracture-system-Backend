@@ -76,3 +76,8 @@ colorama==0.4.6
 
 # Production
 gunicorn==25.0.1
+
+#migration files
+**/migrations/*
+!**/migrations/__init__.py
+ frontend/

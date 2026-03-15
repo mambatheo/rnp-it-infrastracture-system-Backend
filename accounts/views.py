@@ -80,6 +80,8 @@ class UserViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"status": "Password changed successfully."})
+    
+
 
 
 # ─────────────────────────────────────────
@@ -125,7 +127,7 @@ class AuthViewSet(viewsets.ViewSet):
 
         if user is None:
             user_obj.failed_login_attempts += 1
-            if user_obj.failed_login_attempts >= 5:
+            if user_obj.failed_login_attempts >= 3:
                 user_obj.is_locked    = True
                 user_obj.locked_until = timezone.now() + timedelta(minutes=30)
                 user_obj.save()

@@ -40,8 +40,9 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',           # FIX 2: was missing
+    'django.middleware.csrf.CsrfViewMiddleware',           
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'accounts.middleware.ForcePasswordChangeMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.locale.LocaleMiddleware',
@@ -82,12 +83,12 @@ else:
             'NAME': os.getenv("DEV_DB_NAME"),
             'USER': os.getenv("DEV_DB_USER"),
             'PASSWORD': os.getenv("DEV_DB_PASSWORD"),
-            'HOST': 'localhost',
-            'PORT': 5432,
-            'OPTIONS': {
-                'sslmode': 'require',
-            },
-            'CONN_MAX_AGE': 600,
+            'HOST': os.getenv("localhost"),
+            'PORT': os.getenv("port"),
+            # 'OPTIONS': {
+            #     'sslmode': 'require',
+            # },
+            # 'CONN_MAX_AGE': 600,
         }
     }
 

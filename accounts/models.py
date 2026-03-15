@@ -8,6 +8,7 @@ from django.core.validators import MaxLengthValidator, MinLengthValidator
 class UserManager(BaseUserManager):
 
     def create_user(self, email, first_name, last_name, phone_number=None, password=None, **extra_fields):
+        
         if not email:
             raise ValueError('Email is required')
         email = self.normalize_email(email)
@@ -18,6 +19,7 @@ class UserManager(BaseUserManager):
             phone_number=phone_number,
             **extra_fields,
         )
+        must_change_password = models.Boolean(default=True)
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -42,7 +44,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     TECHNICIAN = 'TECHNICIAN'
-    IT_STAFF = 'IT_STAFF'
+    IT_STAFF = 'IT STAFF'
     USER = 'USER'
     ADMIN = 'ADMIN'
 
