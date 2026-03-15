@@ -1,1 +1,1 @@
-"web: gunicorn itinfra.wsgi:application" | Out-File -FilePath Procfile -Encoding utf8NoBOM -NoNewline
+[System.IO.File]::WriteAllText("$PWD\Procfile", "web: gunicorn itinfra.wsgi:application`n", [System.Text.Encoding]::ASCII)
