@@ -6,8 +6,8 @@ class ForcePasswordChangeMiddleware:
         '/accounts/auth/logout/',
         '/accounts/auth/refresh/',
         '/accounts/users/change_password/',
-        '/admin/',
-        '/admin',
+         '/admin/',
+         '/admin',
     ]
     
     def __init__(self, get_response):

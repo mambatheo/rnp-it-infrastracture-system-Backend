@@ -10,13 +10,13 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'first_name', 'last_name',
+            'id', 'email', 'first_name', 'last_name', 'dpu', 'region', 'unit',
             'full_name', 'phone_number', 'role', 'is_active',
             'is_locked', 'locked_until', 'created_at', 'is_staff'
         ]
         read_only_fields = ['id', 'created_at', 'is_locked', 'locked_until']
 
-    def get_full_name(self, obj):
+    def get_full_name(self, obj) -> str:
         return obj.get_full_name()
 
 
@@ -27,9 +27,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'email', 'first_name', 'last_name',
-            'phone_number', 'password', 'password_confirm'
+            'email', 'first_name', 'last_name', 'dpu', 'region', 'unit',
+            'phone_number', 'role', 'password', 'password_confirm'
         ]
+        extra_kwargs = {
+            'role': {'required': True},
+        }
 
     def validate_phone_number(self, value):
         if value and len(value) != 10:
@@ -39,15 +42,29 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
     def validate(self, attrs):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({"password": "Passwords do not match."})
+        # At least one of dpu, region, or unit must be assigned
+        if not attrs.get('dpu') and not attrs.get('region') and not attrs.get('unit'):
+            raise serializers.ValidationError(
+                "At least one of DPU, Region, or Unit must be assigned to the user."
+            )
         return attrs
 
     def create(self, validated_data):
         validated_data.pop('password_confirm')
         password = validated_data.pop('password')
-        validated_data.setdefault('role', User.USER)
-        user = User.objects.create(**validated_data)
-        user.set_password(password)
-        user.is_active = False  # admin must activate
+        dpu    = validated_data.pop('dpu', None)
+        region = validated_data.pop('region', None)
+        unit   = validated_data.pop('unit', None)
+        role   = validated_data.pop('role')
+        user = User.objects.create_user(
+            password=password,
+            dpu=dpu,
+            region=region,
+            unit=unit,
+            **validated_data,
+        )
+        user.role      = role
+        user.is_active = False  # must be activated by admin
         user.save()
         return user
 
@@ -55,7 +72,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['email', 'first_name', 'last_name', 'phone_number', 'role', 'is_active']
+        fields = ['email', 'first_name', 'last_name', 'phone_number', 'dpu', 'region', 'unit', 'role', 'is_active']
 
 
 class LoginSerializer(serializers.Serializer):

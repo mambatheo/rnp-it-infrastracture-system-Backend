@@ -137,10 +137,10 @@ class EquipmentSerializer(serializers.ModelSerializer):
        
         read_only_fields = ["created_at", "updated_at"]
 
-    def get_created_by_name(self, obj):
+    def get_created_by_name(self, obj) -> str | None:
         return obj.created_by.get_full_name() if obj.created_by else None
 
-    def get_updated_by_name(self, obj):
+    def get_updated_by_name(self, obj) -> str | None:
         return obj.updated_by.get_full_name() if obj.updated_by else None
 
     def validate(self, data):
@@ -190,7 +190,7 @@ class StockSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["date_added", "created_at", "updated_at"]
 
-    def get_added_by_name(self, obj):
+    def get_added_by_name(self, obj) -> str | None:
         return obj.added_by.get_full_name() if obj.added_by else None
 
 
@@ -266,8 +266,8 @@ class DeploymentSerializer(serializers.ModelSerializer):
 
         return data
 
-    def get_issued_by_name(self, obj):
+    def get_issued_by_name(self, obj) -> str | None:
         return obj.issued_by.get_full_name() if obj.issued_by else None
 
-    def get_return_confirmed_by_name(self, obj):
+    def get_return_confirmed_by_name(self, obj) -> str | None:
         return obj.return_confirmed_by.get_full_name() if obj.return_confirmed_by else None

@@ -1,5 +1,6 @@
 import uuid
 from django.db import models
+from equipment.models import DPU, Region , Unit
 from django.utils.translation import gettext as _
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.core.validators import MaxLengthValidator, MinLengthValidator
@@ -7,8 +8,8 @@ from django.core.validators import MaxLengthValidator, MinLengthValidator
 
 class UserManager(BaseUserManager):
 
-    def create_user(self, email, first_name, last_name, phone_number=None, password=None, **extra_fields):
-        
+    def create_user(self, email, first_name, last_name, phone_number=None, password=None, dpu=None, region=None, unit=None, **extra_fields):
+
         if not email:
             raise ValueError('Email is required')
         email = self.normalize_email(email)
@@ -17,9 +18,11 @@ class UserManager(BaseUserManager):
             first_name=first_name,
             last_name=last_name,
             phone_number=phone_number,
+            dpu=dpu,
+            region=region,
+            unit=unit,
             **extra_fields,
         )
-        must_change_password = models.Boolean(default=True)
         user.set_password(password)
         user.save(using=self._db)
         return user
@@ -38,6 +41,7 @@ class UserManager(BaseUserManager):
         user.is_staff = True
         user.is_admin = True
         user.is_superuser = True
+        user.is_first_login = False  # Superusers are exempt from forced password change
         user.save(using=self._db)
         return user
 
@@ -68,6 +72,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         null=True,
         validators=[MinLengthValidator(10), MaxLengthValidator(10)]
     )
+    dpu    = models.ForeignKey("equipment.dpu",    on_delete=models.SET_NULL, null=True, blank=True, related_name="admin_dpu")
+    region = models.ForeignKey("equipment.region", on_delete=models.SET_NULL, null=True, blank=True, related_name="admin_region")
+    unit   = models.ForeignKey("equipment.unit",   on_delete=models.SET_NULL, null=True, blank=True, related_name="admin_unit")
     failed_login_attempts = models.IntegerField(_("failed login attempts"), default=0)
     is_locked = models.BooleanField(_("is locked"), default=False)
     locked_until = models.DateTimeField(_("locked until"), null=True, blank=True)
@@ -87,6 +94,14 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def get_short_name(self):
         return self.first_name
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        # Superusers are exempt — they don't belong to a specific location
+        if not self.is_superuser and not self.dpu_id and not self.region_id and not self.unit_id:
+            raise ValidationError(
+                "At least one of DPU, Region, or Unit must be assigned to the user."
+            )
 
     def __str__(self):
         return f"{self.email} - {self.get_full_name()}"

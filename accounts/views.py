@@ -151,12 +151,15 @@ class AuthViewSet(viewsets.ViewSet):
         user.failed_login_attempts = 0
         user.save()
 
-        refresh = RefreshToken.for_user(user)        
+        refresh = RefreshToken.for_user(user)
 
-        return Response({                              
+        # Admins and superusers are exempt from the forced password-change flow
+        is_first_login = False if (user.role == User.ADMIN or user.is_superuser) else user.is_first_login
+
+        return Response({
             "access":         str(refresh.access_token),
             "refresh":        str(refresh),
-            "is_first_login": user.is_first_login,
+            "is_first_login": is_first_login,
             "user":           UserSerializer(user).data,
         })
 
@@ -165,12 +168,13 @@ class AuthViewSet(viewsets.ViewSet):
     @extend_schema(exclude=True)                     
     @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated])
     def refresh(self, request):
-        user    = request.user                        
+        user    = request.user
         refresh = RefreshToken.for_user(user)
+        is_first_login = False if (user.role == User.ADMIN or user.is_superuser) else user.is_first_login
         return Response({
             "access":         str(refresh.access_token),
             "refresh":        str(refresh),
-            "is_first_login": user.is_first_login,
+            "is_first_login": is_first_login,
             "user":           UserSerializer(user).data,
         })
 

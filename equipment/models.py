@@ -1,12 +1,13 @@
 import uuid
+from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinLengthValidator, MaxLengthValidator
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from django.contrib.auth import get_user_model
+# from django.contrib.auth import get_user_model
 
-User = get_user_model()
+# User = get_user_model()
 
 
 
@@ -63,7 +64,7 @@ class DPU(models.Model):
         DPUOffice, on_delete=models.PROTECT,
         blank=True, null=True, related_name="dpuhq_office"
     )
-    region     = models.ForeignKey(Region, on_delete=models.CASCADE, related_name="dpus")
+    region     = models.ForeignKey(Region, on_delete=models.PROTECT, related_name="dpus")
 
     class Meta:
         ordering    = ["name"]
@@ -78,7 +79,7 @@ class DPU(models.Model):
 class Station(models.Model):
     id  = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=100)
-    dpu  = models.ForeignKey(DPU, on_delete=models.CASCADE, related_name="stations")
+    dpu  = models.ForeignKey(DPU, on_delete=models.PROTECT, related_name="stations")
 
     class Meta:
         ordering    = ["name"]
@@ -155,8 +156,8 @@ class Office(models.Model):
         Department, on_delete=models.PROTECT,
         null=True, blank=True, related_name="offices"
     )
-    region     = models.ForeignKey(Region, on_delete=models.CASCADE, related_name="offices")
-    dpu        = models.ForeignKey(DPU,    on_delete=models.CASCADE, related_name="offices")
+    region     = models.ForeignKey(Region, on_delete=models.PROTECT, related_name="offices")
+    dpu        = models.ForeignKey(DPU,    on_delete=models.PROTECT, related_name="offices")
 
     class Meta:
         ordering    = ["name"]
@@ -325,13 +326,11 @@ class Equipment(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    created_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="created_equipment"
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,         
+        related_name="created_equipment",null=True
     )
-    updated_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="updated_equipment"
+    updated_by =  models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,        
+        related_name="updated_equipment", null=True
     )
 
     # ── Properties ────────────────────────────────────────────────────────────
@@ -443,7 +442,7 @@ class Stock(models.Model):
         UNDER_REPAIR = "Under Repair", _("Under Repair")
 
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    equipment        = models.OneToOneField(Equipment, on_delete=models.CASCADE, related_name="stock")
+    equipment        = models.OneToOneField(Equipment, on_delete=models.PROTECT, related_name="stock")
     storage_location = models.CharField(
         max_length=100, blank=True, null=True,
         help_text="Logistics or IT Tech Support."
@@ -457,8 +456,7 @@ class Stock(models.Model):
     # Audit
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    added_by   = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, blank=True,
+    added_by   = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
         related_name="stock_additions"
     )
 
@@ -517,8 +515,8 @@ class Deployment(models.Model):
 
     # ── Audit ─────────────────────────────────────────────────────────────────
 
-    issued_by           = models.ForeignKey(User, on_delete=models.PROTECT, related_name="issued_deployments")
-    return_confirmed_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="confirmed_returns")
+    issued_by           = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="issued_deployments")
+    return_confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,  related_name="confirmed_returns")
     created_at          = models.DateTimeField(auto_now_add=True)
     updated_at          = models.DateTimeField(auto_now=True)
 
