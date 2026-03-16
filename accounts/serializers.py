@@ -43,7 +43,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({"password": "Passwords do not match."})
         # At least one of dpu, region, or unit must be assigned
-        if not attrs.get('dpu') and not attrs.get('region') and not attrs.get('unit'):
+        if not attrs.get('dpu') or not attrs.get('region') or not attrs.get('unit'):
             raise serializers.ValidationError(
                 "At least one of DPU, Region, or Unit must be assigned to the user."
             )
