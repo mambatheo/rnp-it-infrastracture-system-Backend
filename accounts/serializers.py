@@ -47,11 +47,12 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         if attrs.get('password') != attrs.get('password_confirm'):
             raise serializers.ValidationError({"password": "Passwords do not match."})
         # At least one of dpu, region, or unit must be assigned.
-        # DRF resolves FK fields to model instances in attrs, so check truthiness directly.
+        # DRF resolves FK fields to model instances; check truthiness on the instance.
         has_location = bool(attrs.get('dpu')) or bool(attrs.get('region')) or bool(attrs.get('unit'))
         if not has_location:
+            # Raise as a plain string — DRF automatically places it under non_field_errors
             raise serializers.ValidationError(
-                {"non_field_errors": "At least one of DPU, Region, or Unit must be assigned to the user."}
+                "At least one of DPU, Region, or Unit must be assigned to the user."
             )
         return attrs
 
