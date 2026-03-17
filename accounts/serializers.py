@@ -31,7 +31,11 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
             'phone_number', 'role', 'password', 'password_confirm'
         ]
         extra_kwargs = {
-            'role': {'required': True},
+            'role':   {'required': True},
+            # Explicitly mark FK location fields as optional and nullable
+            'dpu':    {'required': False, 'allow_null': True},
+            'region': {'required': False, 'allow_null': True},
+            'unit':   {'required': False, 'allow_null': True},
         }
 
     def validate_phone_number(self, value):
@@ -40,12 +44,14 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        if attrs['password'] != attrs['password_confirm']:
+        if attrs.get('password') != attrs.get('password_confirm'):
             raise serializers.ValidationError({"password": "Passwords do not match."})
-        # At least one of dpu, region, or unit must be assigned
-        if not attrs.get('dpu') and not attrs.get('region') and not attrs.get('unit'):
+        # At least one of dpu, region, or unit must be assigned.
+        # DRF resolves FK fields to model instances in attrs, so check truthiness directly.
+        has_location = bool(attrs.get('dpu')) or bool(attrs.get('region')) or bool(attrs.get('unit'))
+        if not has_location:
             raise serializers.ValidationError(
-                "At least one of DPU, Region, or Unit must be assigned to the user."
+                {"non_field_errors": "At least one of DPU, Region, or Unit must be assigned to the user."}
             )
         return attrs
 
