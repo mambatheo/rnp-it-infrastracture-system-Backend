@@ -48,7 +48,7 @@ class UserManager(BaseUserManager):
 
 class User(AbstractBaseUser, PermissionsMixin):
     TECHNICIAN = 'TECHNICIAN'
-    IT_STAFF = 'IT STAFF'
+    IT_STAFF = 'IT_STAFF'
     USER = 'USER'
     ADMIN = 'ADMIN'
 

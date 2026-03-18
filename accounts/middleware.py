@@ -2,12 +2,12 @@ from django.http import JsonResponse
 
 class ForcePasswordChangeMiddleware:
     EXEMPT_PATHS = [
-        '/accounts/auth/login/',
-        '/accounts/auth/logout/',
-        '/accounts/auth/refresh/',
-        '/accounts/users/change_password/',
-         '/admin/',
-         '/admin',
+        '/api/v1/accounts/auth/login/',
+        '/api/v1/accounts/auth/logout/',
+        '/api/v1/accounts/auth/refresh/',
+        '/api/v1/accounts/users/change_password/',
+        '/admin/',
+        '/admin',
     ]
     
     def __init__(self, get_response):

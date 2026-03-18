@@ -51,7 +51,7 @@ class UserRegistrationSerializer(serializers.ModelSerializer):
         has_location = bool(attrs.get('dpu')) or bool(attrs.get('region')) or bool(attrs.get('unit'))
         if not has_location:
             # Raise as a plain string — DRF automatically places it under non_field_errors
-            raise serializers.ValidationError(
+            raise serializers.ValidationError( 
                 "At least one of DPU, Region, or Unit must be assigned to the user."
             )
         return attrs

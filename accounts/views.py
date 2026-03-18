@@ -31,8 +31,8 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.role == User.ADMIN or user.is_superuser:
-            return User.objects.all()
-        return User.objects.filter(id=user.id)
+            return User.objects.all().order_by("date_joined")
+        return User.objects.filter(id=user.id).order_by("date_joined")
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -156,11 +156,16 @@ class AuthViewSet(viewsets.ViewSet):
         # Admins and superusers are exempt from the forced password-change flow
         is_first_login = False if (user.role == User.ADMIN or user.is_superuser) else user.is_first_login
 
+        # Build user data; normalise role for superusers/staff who may have no role set
+        user_data = UserSerializer(user).data
+        if not user_data.get('role') and (user.is_superuser or user.is_staff):
+            user_data['role'] = User.ADMIN
+
         return Response({
             "access":         str(refresh.access_token),
             "refresh":        str(refresh),
             "is_first_login": is_first_login,
-            "user":           UserSerializer(user).data,
+            "user":           user_data,
         })
 
     # ── Refresh ───────────────────────────────────────────────────────────────

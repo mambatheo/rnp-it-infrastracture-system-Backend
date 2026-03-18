@@ -61,6 +61,27 @@ ALT_ROW   = "EBF3FB"
 WHITE     = "FFFFFF"
 ACCENT    = "2E75B6"
 
+# ── Pre-built openpyxl style singletons (reuse to avoid per-cell allocation) ──
+_THIN_BORDER_SIDE  = Side(style="thin", color="CCCCCC")
+_WHITE_BORDER_SIDE = Side(style="thin", color="FFFFFF")
+
+_DATA_BORDER     = Border(left=_THIN_BORDER_SIDE,  right=_THIN_BORDER_SIDE,
+                          top=_THIN_BORDER_SIDE,   bottom=_THIN_BORDER_SIDE)
+_HEADER_BORDER   = Border(left=_WHITE_BORDER_SIDE, right=_WHITE_BORDER_SIDE,
+                          top=_WHITE_BORDER_SIDE,  bottom=_WHITE_BORDER_SIDE)
+
+_FILL_WHITE      = PatternFill(start_color=WHITE,    end_color=WHITE,    fill_type="solid")
+_FILL_ALT        = PatternFill(start_color=ALT_ROW,  end_color=ALT_ROW,  fill_type="solid")
+_FILL_DARK_BLUE  = PatternFill(start_color=DARK_BLUE,end_color=DARK_BLUE,fill_type="solid")
+_FILL_ACCENT     = PatternFill(start_color=ACCENT,   end_color=ACCENT,   fill_type="solid")
+
+_ALIGN_CENTER    = Alignment(horizontal="center", vertical="center", wrap_text=True)
+_ALIGN_RIGHT     = Alignment(horizontal="right",  vertical="center")
+
+_FONT_DATA       = Font(name="Tahoma", size=11)
+_FONT_HEADER     = Font(name="Tahoma", color=WHITE, bold=True, size=11)
+_FONT_GRAND      = Font(name="Tahoma", bold=True, color=WHITE, size=12)
+
 PDF_DARK   = colors.HexColor("#1F4E79")
 PDF_ALT    = colors.HexColor("#EBF3FB")
 PDF_ACCENT = colors.HexColor("#2E75B6")
@@ -249,23 +270,17 @@ def get_basic_rows(queryset=None, equipment_type=None):
 # ─────────────────────────────────────────
 
 def _header_cell(cell):
-    cell.font      = Font(name="Tahoma", color=WHITE, bold=True, size=11)
-    cell.fill      = PatternFill(start_color=DARK_BLUE, end_color=DARK_BLUE, fill_type="solid")
-    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    thin           = Side(style="thin", color="FFFFFF")
-    cell.border    = Border(left=thin, right=thin, top=thin, bottom=thin)
+    cell.font      = _FONT_HEADER
+    cell.fill      = _FILL_DARK_BLUE
+    cell.alignment = _ALIGN_CENTER
+    cell.border    = _HEADER_BORDER
 
 
 def _data_cell(cell, alt=False):
-    cell.fill      = PatternFill(
-        start_color=ALT_ROW if alt else WHITE,
-        end_color  =ALT_ROW if alt else WHITE,
-        fill_type  ="solid",
-    )
-    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-    thin           = Side(style="thin", color="CCCCCC")
-    cell.border    = Border(left=thin, right=thin, top=thin, bottom=thin)
-    cell.font      = Font(name="Tahoma", size=11)
+    cell.fill      = _FILL_ALT if alt else _FILL_WHITE
+    cell.alignment = _ALIGN_CENTER
+    cell.border    = _DATA_BORDER
+    cell.font      = _FONT_DATA
 
 
 def _excel_header(ws, report_title, col_count):
