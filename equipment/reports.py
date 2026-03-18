@@ -61,7 +61,6 @@ ALT_ROW   = "EBF3FB"
 WHITE     = "FFFFFF"
 ACCENT    = "2E75B6"
 
-# ── Pre-built openpyxl style singletons (reuse to avoid per-cell allocation) ──
 _THIN_BORDER_SIDE  = Side(style="thin", color="CCCCCC")
 _WHITE_BORDER_SIDE = Side(style="thin", color="FFFFFF")
 
@@ -85,7 +84,6 @@ _FONT_GRAND      = Font(name="Tahoma", bold=True, color=WHITE, size=12)
 _FONT_BANNER     = Font(name="Tahoma", bold=True, color="FFFFFF", size=13)
 _FONT_SECTION    = Font(name="Tahoma", bold=True, color="FFFFFF", size=12)
 
-# Bug 1 fix: pre-build Protection singleton — avoids creating one object per cell in _protect_sheet
 _LOCKED_PROTECTION = Protection(locked=True)
 
 PDF_DARK   = colors.HexColor("#1F4E79")
@@ -97,7 +95,6 @@ PDF_GREY   = colors.HexColor("#CCCCCC")
 # FIELDS
 # ─────────────────────────────────────────
 
-# FIX: added missing comma between "Model" and "Serial Number"
 BASIC_FIELDS = [
     "S/N", "Brand", "Model", "Serial Number", "Marking Code",
     "Location", "Status", "Age",
@@ -114,15 +111,12 @@ COL_WIDTHS = [
     3.0*cm,   # Age
 ]
 
-# Landscape A4 content width: 297mm − 10mm left − 10mm right = 277mm
 PAGE_CONTENT_WIDTH = 27.7 * cm
 
-# Maps header label → PDF column width (used for dynamic filtering)
 _FIELD_WIDTH = dict(zip(BASIC_FIELDS, COL_WIDTHS))
 
 
 def _filter_empty_cols(headers, rows, widths=None):
-
     if not rows:
         return headers, rows, widths
 
@@ -139,9 +133,7 @@ def _filter_empty_cols(headers, rows, widths=None):
 
 
 def _scale_to_page(widths, page_width=PAGE_CONTENT_WIDTH):
-    """
-    Proportionally scale column widths so they sum exactly to page_width.
-    """
+    """Proportionally scale column widths so they sum exactly to page_width."""
     total = sum(widths) if widths else 0
     if not total:
         return widths
@@ -149,9 +141,18 @@ def _scale_to_page(widths, page_width=PAGE_CONTENT_WIDTH):
     return [w * factor for w in widths]
 
 
-# ── Paragraph styles used inside PDF table cells ───────────────────────────
-# Built once at module level to avoid ReportLab name-collision KeyErrors on
-# repeated requests (Bugs 4/5/6) and to avoid per-call object allocation.
+# FIX #6: correct Excel column width conversion.
+# openpyxl width units ≈ characters at default font (~7 px each).
+# 1 cm ≈ 0.547 Excel character-width units (empirically: 1 char ≈ 1.828 mm).
+_CM_TO_XL_WIDTH = 1 / 0.1828   # ≈ 5.47 units per cm
+
+
+def _cm_to_xl(cm_value):
+    """Convert a ReportLab cm measurement to an openpyxl column-width value."""
+    return round(cm_value / cm * _CM_TO_XL_WIDTH, 1)
+
+
+# ── Paragraph styles ────────────────────────────────────────────────────────
 _PDF_STYLES = getSampleStyleSheet()
 
 _CELL_STYLE = ParagraphStyle(
@@ -172,7 +173,6 @@ _HEADER_CELL_STYLE = ParagraphStyle(
     alignment=1,
 )
 
-# PDF heading / body styles — shared across all report generators
 _STYLE_PDF_SYSTEM = ParagraphStyle(
     "PDFSystemName", parent=_PDF_STYLES["Normal"],
     fontSize=14, fontName=_PDF_FONT_BOLD,
@@ -236,7 +236,6 @@ def _wrap_rows(header_row, data_rows):
 # ─────────────────────────────────────────
 
 def _protect_sheet(ws):
-    # Reuse singleton — avoids creating thousands of Protection() objects per sheet
     for row in ws.iter_rows():
         for cell in row:
             cell.protection = _LOCKED_PROTECTION
@@ -279,6 +278,27 @@ def get_summary():
     return summary
 
 
+def _build_location(obj):
+    """
+    FIX #3: single canonical location builder used by ALL report generators,
+    matching the full hierarchy: office → unit → dpu (+office) → region (+office).
+    """
+    parts = []
+    if obj.office:
+        parts.append(str(obj.office))
+    elif obj.unit:
+        parts.append(str(obj.unit))
+    elif obj.dpu:
+        parts.append(str(obj.dpu))
+        if obj.dpu.dpu_office:
+            parts.append(str(obj.dpu.dpu_office))
+    elif obj.region:
+        parts.append(str(obj.region))
+        if obj.region.region_office:
+            parts.append(str(obj.region.region_office))
+    return ", ".join(parts) if parts else "—"
+
+
 def get_basic_rows(queryset=None, equipment_type=None):
     if queryset is None:
         qs = Equipment.objects.select_related(
@@ -295,31 +315,15 @@ def get_basic_rows(queryset=None, equipment_type=None):
 
     rows = []
     for sn, obj in enumerate(qs, start=1):
-        parts = []
-        if obj.office:
-            parts.append(str(obj.office))
-        elif obj.unit:
-            parts.append(str(obj.unit))
-        elif obj.dpu:
-            parts.append(str(obj.dpu))
-            if obj.dpu.dpu_office:
-                parts.append(str(obj.dpu.dpu_office))
-        elif obj.region:
-            parts.append(str(obj.region))
-            if obj.region.region_office:
-                parts.append(str(obj.region.region_office))
-        location = ", ".join(parts) if parts else "—"
-
-        # FIX: rows now include Brand and Model to match BASIC_FIELDS (8 columns)
         rows.append([
             str(sn),
-            str(obj.brand) if obj.brand else "—",  # Brand
-            obj.model              or "—",           # Model
-            obj.serial_number      or "—",           # Serial Number
-            obj.marking_code       or "—",           # Marking Code
-            location,                                # Location
-            str(obj.status) if obj.status else "—", # Status
-            obj.age_since_deployed or "—",           # Age
+            str(obj.brand) if obj.brand else "—",
+            obj.model              or "—",
+            obj.serial_number      or "—",
+            obj.marking_code       or "—",
+            _build_location(obj),
+            str(obj.status) if obj.status else "—",
+            obj.age_since_deployed or "—",
         ])
     return rows
 
@@ -343,6 +347,11 @@ def _data_cell(cell, alt=False):
 
 
 def _excel_header(ws, report_title, col_count):
+    """
+    FIX #5: logo occupies columns 1..(mid) and the title block occupies
+    (mid+1)..col_count.  For narrow sheets (col_count <= 2) the logo sits in
+    col 1 only and the title starts at col 2, preventing an overlap.
+    """
     ws.sheet_view.showGridLines      = False
     ws.page_setup.orientation        = ws.ORIENTATION_LANDSCAPE
     ws.page_setup.fitToPage          = True
@@ -357,21 +366,23 @@ def _excel_header(ws, report_title, col_count):
         logo.height = 112
         ws.add_image(logo, "A1")
 
-    mid = max(col_count // 2, 1)
+    # Title block always starts at column 2 at minimum so it never
+    # overlaps the logo image anchored at A1.
+    title_start = max(2, col_count // 2 + 1)
 
-    ws.merge_cells(start_row=1, start_column=mid + 1, end_row=1, end_column=col_count)
-    sys_cell           = ws.cell(row=1, column=mid + 1, value=SYSTEM_NAME)
+    ws.merge_cells(start_row=1, start_column=title_start, end_row=1, end_column=col_count)
+    sys_cell           = ws.cell(row=1, column=title_start, value=SYSTEM_NAME)
     sys_cell.font      = Font(name="Tahoma", size=14, bold=True, color=DARK_BLUE)
     sys_cell.alignment = Alignment(horizontal="right", vertical="center")
 
-    ws.merge_cells(start_row=2, start_column=mid + 1, end_row=2, end_column=col_count)
-    title_cell           = ws.cell(row=2, column=mid + 1, value=report_title)
+    ws.merge_cells(start_row=2, start_column=title_start, end_row=2, end_column=col_count)
+    title_cell           = ws.cell(row=2, column=title_start, value=report_title)
     title_cell.font      = Font(name="Tahoma", size=12, color=ACCENT)
     title_cell.alignment = Alignment(horizontal="right", vertical="center")
 
-    ws.merge_cells(start_row=3, start_column=mid + 1, end_row=3, end_column=col_count)
+    ws.merge_cells(start_row=3, start_column=title_start, end_row=3, end_column=col_count)
     date_cell = ws.cell(
-        row=3, column=mid + 1,
+        row=3, column=title_start,
         value=f"Generated: {timezone.now().strftime('%d %B %Y, %H:%M')}",
     )
     date_cell.font      = Font(name="Tahoma", size=10, italic=True, color="666666")
@@ -539,7 +550,7 @@ def _build_pdf(elements):
 def generate_excel_all():
     wb         = Workbook()
     summary    = get_summary()
-    eq_types   = list(get_equipment_types())
+    eq_types   = list(get_equipment_types())   # evaluate once
 
     # ── Summary sheet ─────────────────────────────────────────────────────────
     ws_summary       = wb.active
@@ -576,7 +587,6 @@ def generate_excel_all():
         ws_summary.column_dimensions[chr(64 + i)].width = w
     _protect_sheet(ws_summary)
 
-    # ── One sheet per equipment type ──────────────────────────────────────────
     for eq_type in eq_types:
         ws = wb.create_sheet(title=eq_type[:31])
         _write_equipment_sheet(ws, eq_type, equipment_type=eq_type)
@@ -725,6 +735,12 @@ def _write_stock_sheet(ws, title, equipment_type=None):
 def generate_stock_excel_all():
     wb = Workbook()
 
+    # FIX #4: evaluate the queryset once into a list to avoid multiple DB hits.
+    types_in_stock = list(
+        Stock.objects.values_list("equipment__equipment_type", flat=True)
+        .distinct().order_by("equipment__equipment_type")
+    )
+
     ws_sum       = wb.active
     ws_sum.title = "Summary"
     ws_sum.sheet_view.showGridLines = False
@@ -733,10 +749,6 @@ def generate_stock_excel_all():
     for cell in ws_sum[ws_sum.max_row]:
         _header_cell(cell)
 
-    types_in_stock = (
-        Stock.objects.values_list("equipment__equipment_type", flat=True)
-        .distinct().order_by("equipment__equipment_type")
-    )
     for i, eq_type in enumerate(types_in_stock):
         count = Stock.objects.filter(equipment__equipment_type=eq_type).count()
         ws_sum.append([eq_type, count, ""])
@@ -800,10 +812,12 @@ def _pdf_stock_section(equipment_type):
 
 
 def generate_stock_pdf_all():
-    types_in_stock = (
+    # FIX #4: evaluate once, reuse the list for summary table and section loop.
+    types_in_stock = list(
         Stock.objects.values_list("equipment__equipment_type", flat=True)
         .distinct().order_by("equipment__equipment_type")
     )
+
     summary_data = [["Equipment Type", "Items in Stock"]]
     for eq_type in types_in_stock:
         summary_data.append([eq_type, Stock.objects.filter(equipment__equipment_type=eq_type).count()])
@@ -860,8 +874,6 @@ def generate_stock_pdf_by_type(equipment_type):
 #  UNIT / REGION / DPU REPORTS  — shared fields
 # ═════════════════════════════════════════════════════════════════
 
-
-
 UNIT_FIELDS = [
     "S/N", "Serial Number", "Marking Code",
     "Location", "Status", "Age",
@@ -902,20 +914,18 @@ _TYPE_LABELS = {
 
 
 def _unit_device_rows(unit_qs, equipment_type):
-    """Return numbered data rows for one equipment_type within a group queryset."""
+    """
+    FIX #3: use _build_location() for consistent, full-hierarchy location
+    strings across all unit/region/DPU report generators.
+    """
     qs = unit_qs.filter(equipment_type=equipment_type).order_by("name")
     rows = []
     for sn, obj in enumerate(qs, start=1):
-        location = (
-            str(obj.office) if obj.office else
-            str(obj.unit)   if obj.unit   else
-            str(obj.region) if obj.region else "—"
-        )
         rows.append([
             str(sn),
             obj.serial_number                    or "—",
             obj.marking_code                     or "—",
-            location,
+            _build_location(obj),
             str(obj.status) if obj.status        else "—",
             obj.age_since_deployed               or "—",
         ])
@@ -923,15 +933,30 @@ def _unit_device_rows(unit_qs, equipment_type):
 
 
 def _base_unit_qs():
-    return Equipment.objects.select_related("brand", "status", "office", "unit", "region")
+    return Equipment.objects.select_related(
+        "brand", "status",
+        "office", "unit",
+        "region", "region__region_office",
+        "dpu", "dpu__dpu_office",
+    )
 
 
 def _base_region_qs():
-    return Equipment.objects.select_related("brand", "status", "office", "unit", "region")
+    return Equipment.objects.select_related(
+        "brand", "status",
+        "office", "unit",
+        "region", "region__region_office",
+        "dpu", "dpu__dpu_office",
+    )
 
 
 def _base_dpu_qs():
-    return Equipment.objects.select_related("brand", "status", "office", "unit", "region")
+    return Equipment.objects.select_related(
+        "brand", "status",
+        "office", "unit",
+        "region", "region__region_office",
+        "dpu", "dpu__dpu_office",
+    )
 
 
 # ─── Excel helpers ────────────────────────────────────────────────────────────
@@ -966,13 +991,19 @@ def _write_unit_sheet(ws, unit_name, unit_qs):
         rows = _unit_device_rows(unit_qs, eq_type)
         if not rows:
             continue
+
+        # FIX #2: filter empty columns per section so blank columns are hidden.
+        unit_widths = [_UNIT_FIELD_WIDTH[h] for h in UNIT_FIELDS]
+        headers_f, rows_f, _ = _filter_empty_cols(UNIT_FIELDS, rows, widths=unit_widths)
+        n_cols_section = len(headers_f)
+
         section_num += 1
         label = f"{section_num}. {_TYPE_LABELS.get(eq_type, eq_type.upper())}"
 
-        # Section heading row
+        # Section heading row (spans the filtered column count)
         ws.merge_cells(
             start_row=row_num, start_column=1,
-            end_row=row_num, end_column=n_cols
+            end_row=row_num, end_column=n_cols_section
         )
         sec_cell = ws.cell(row=row_num, column=1, value=label)
         sec_cell.font      = _FONT_SECTION
@@ -982,14 +1013,14 @@ def _write_unit_sheet(ws, unit_name, unit_qs):
         row_num += 1
 
         # Column headers
-        for col_idx, header in enumerate(UNIT_FIELDS, start=1):
+        for col_idx, header in enumerate(headers_f, start=1):
             cell = ws.cell(row=row_num, column=col_idx, value=header)
             _header_cell(cell)
         ws.row_dimensions[row_num].height = 18
         row_num += 1
 
         # Data rows
-        for i, row in enumerate(rows):
+        for i, row in enumerate(rows_f):
             for col_idx, val in enumerate(row, start=1):
                 cell = ws.cell(row=row_num, column=col_idx, value=val)
                 _data_cell(cell, alt=(i % 2 == 0))
@@ -998,9 +1029,9 @@ def _write_unit_sheet(ws, unit_name, unit_qs):
 
         row_num += 1  # spacer between sections
 
-    # Column widths
+    # FIX #6: use correct cm → Excel-character-width conversion.
     for letter, width in zip(col_letters, UNIT_COL_WIDTHS):
-        ws.column_dimensions[letter].width = width / cm * 2.54 * 2.2
+        ws.column_dimensions[letter].width = _cm_to_xl(width)
 
     _protect_sheet(ws)
 
@@ -1078,9 +1109,18 @@ def _pdf_unit_section(eq_type, section_num, unit_qs):
     if not rows:
         return []
 
-    w_header, w_data = _wrap_rows(UNIT_FIELDS, rows)
+    # FIX #2: filter empty columns in PDF unit sections too.
+    unit_widths = [_UNIT_FIELD_WIDTH[h] for h in UNIT_FIELDS]
+    headers_f, rows_f, col_widths_f = _filter_empty_cols(UNIT_FIELDS, rows, widths=unit_widths)
+
+    w_header, w_data = _wrap_rows(headers_f, rows_f)
     elements = [Paragraph(label, _STYLE_SEC_HEAD)]
-    t = Table([w_header] + w_data, repeatRows=1, hAlign="LEFT", colWidths=_UNIT_SCALED_WIDTHS)
+    t = Table(
+        [w_header] + w_data,
+        repeatRows=1,
+        hAlign="LEFT",
+        colWidths=_scale_to_page(col_widths_f),
+    )
     t.setStyle(TABLE_STYLE)
     elements.append(t)
     elements.append(Spacer(1, 0.4*cm))
