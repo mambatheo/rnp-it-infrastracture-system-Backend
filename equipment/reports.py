@@ -128,7 +128,7 @@ _CELL_STYLE = ParagraphStyle(
     fontName=_PDF_FONT,
     fontSize=11,
     leading=13,
-    wordWrap="CJK",
+    wordWrap="LTR",
     alignment=1,
 )
 _HEADER_CELL_STYLE = ParagraphStyle(
@@ -136,7 +136,7 @@ _HEADER_CELL_STYLE = ParagraphStyle(
     fontName=_PDF_FONT_BOLD,
     fontSize=11,
     leading=13,
-    wordWrap="CJK",
+    wordWrap="LTR",
     textColor=colors.white,
     alignment=1,
 )
