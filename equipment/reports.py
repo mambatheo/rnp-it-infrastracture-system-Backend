@@ -75,12 +75,18 @@ _FILL_ALT        = PatternFill(start_color=ALT_ROW,  end_color=ALT_ROW,  fill_ty
 _FILL_DARK_BLUE  = PatternFill(start_color=DARK_BLUE,end_color=DARK_BLUE,fill_type="solid")
 _FILL_ACCENT     = PatternFill(start_color=ACCENT,   end_color=ACCENT,   fill_type="solid")
 
-_ALIGN_CENTER    = Alignment(horizontal="center", vertical="center", wrap_text=True)
-_ALIGN_RIGHT     = Alignment(horizontal="right",  vertical="center")
+_ALIGN_CENTER         = Alignment(horizontal="center", vertical="center", wrap_text=True)
+_ALIGN_CENTER_NO_WRAP = Alignment(horizontal="center", vertical="center")
+_ALIGN_RIGHT          = Alignment(horizontal="right",  vertical="center")
 
 _FONT_DATA       = Font(name="Tahoma", size=11)
 _FONT_HEADER     = Font(name="Tahoma", color=WHITE, bold=True, size=11)
 _FONT_GRAND      = Font(name="Tahoma", bold=True, color=WHITE, size=12)
+_FONT_BANNER     = Font(name="Tahoma", bold=True, color="FFFFFF", size=13)
+_FONT_SECTION    = Font(name="Tahoma", bold=True, color="FFFFFF", size=12)
+
+# Bug 1 fix: pre-build Protection singleton — avoids creating one object per cell in _protect_sheet
+_LOCKED_PROTECTION = Protection(locked=True)
 
 PDF_DARK   = colors.HexColor("#1F4E79")
 PDF_ALT    = colors.HexColor("#EBF3FB")
@@ -144,6 +150,10 @@ def _scale_to_page(widths, page_width=PAGE_CONTENT_WIDTH):
 
 
 # ── Paragraph styles used inside PDF table cells ───────────────────────────
+# Built once at module level to avoid ReportLab name-collision KeyErrors on
+# repeated requests (Bugs 4/5/6) and to avoid per-call object allocation.
+_PDF_STYLES = getSampleStyleSheet()
+
 _CELL_STYLE = ParagraphStyle(
     "CellNormal",
     fontName=_PDF_FONT,
@@ -162,6 +172,54 @@ _HEADER_CELL_STYLE = ParagraphStyle(
     alignment=1,
 )
 
+# PDF heading / body styles — shared across all report generators
+_STYLE_PDF_SYSTEM = ParagraphStyle(
+    "PDFSystemName", parent=_PDF_STYLES["Normal"],
+    fontSize=14, fontName=_PDF_FONT_BOLD,
+    textColor=PDF_DARK, alignment=2,
+)
+_STYLE_PDF_REPORT = ParagraphStyle(
+    "PDFReportTitle", parent=_PDF_STYLES["Normal"],
+    fontSize=12, fontName=_PDF_FONT,
+    textColor=colors.HexColor("#444444"), alignment=2,
+)
+_STYLE_PDF_DATE = ParagraphStyle(
+    "PDFDate", parent=_PDF_STYLES["Normal"],
+    fontSize=10, fontName=_PDF_FONT,
+    textColor=colors.grey, alignment=2,
+)
+_STYLE_PDF_HEADING = ParagraphStyle(
+    "PDFHeading", parent=_PDF_STYLES["Heading2"],
+    textColor=PDF_DARK, fontName=_PDF_FONT_BOLD,
+)
+_STYLE_PDF_SMALL = ParagraphStyle(
+    "PDFSmall", parent=_PDF_STYLES["Normal"],
+    fontSize=10, fontName=_PDF_FONT, textColor=colors.grey,
+)
+_STYLE_SEC_HEAD = ParagraphStyle(
+    "PDFSecHead", parent=_PDF_STYLES["Normal"],
+    fontSize=12, fontName=_PDF_FONT_BOLD,
+    textColor=colors.white,
+    backColor=colors.HexColor("#2E4DA0"),
+    spaceAfter=0, spaceBefore=4,
+    leftIndent=4,
+)
+_STYLE_UNIT_HEAD = ParagraphStyle(
+    "PDFUnitHead", parent=_PDF_STYLES["Heading1"],
+    textColor=colors.HexColor("#003580"),
+    fontSize=11, fontName=_PDF_FONT_BOLD,
+)
+_STYLE_REGION_HEAD = ParagraphStyle(
+    "PDFRegionHead", parent=_PDF_STYLES["Heading1"],
+    textColor=colors.HexColor("#003580"),
+    fontSize=11, fontName=_PDF_FONT_BOLD,
+)
+_STYLE_DPU_HEAD = ParagraphStyle(
+    "PDFDPUHead", parent=_PDF_STYLES["Heading1"],
+    textColor=colors.HexColor("#003580"),
+    fontSize=11, fontName=_PDF_FONT_BOLD,
+)
+
 
 def _wrap_rows(header_row, data_rows):
     """Convert plain-string table data into Paragraph-wrapped lists."""
@@ -178,9 +236,10 @@ def _wrap_rows(header_row, data_rows):
 # ─────────────────────────────────────────
 
 def _protect_sheet(ws):
+    # Reuse singleton — avoids creating thousands of Protection() objects per sheet
     for row in ws.iter_rows():
         for cell in row:
-            cell.protection = Protection(locked=True)
+            cell.protection = _LOCKED_PROTECTION
     ws.protection.sheet                = True
     ws.protection.password             = REPORT_PASSWORD
     ws.protection.enable()
@@ -374,35 +433,18 @@ TABLE_STYLE = TableStyle([
 
 
 def _pdf_header(report_title):
-    styles       = getSampleStyleSheet()
-    system_style = ParagraphStyle(
-        "SystemName", parent=styles["Normal"],
-        fontSize=14, fontName=_PDF_FONT_BOLD,
-        textColor=PDF_DARK, alignment=2,
-    )
-    report_style = ParagraphStyle(
-        "ReportTitle", parent=styles["Normal"],
-        fontSize=12, fontName=_PDF_FONT,
-        textColor=colors.HexColor("#444444"), alignment=2,
-    )
-    date_style = ParagraphStyle(
-        "Date", parent=styles["Normal"],
-        fontSize=10, fontName=_PDF_FONT,
-        textColor=colors.grey, alignment=2,
-    )
-
     logo_cell = (
         RLImage(LOGO_PATH, width=2.5*cm, height=2.5*cm)
         if os.path.exists(LOGO_PATH)
-        else Paragraph("[ Logo ]", styles["Normal"])
+        else Paragraph("[ Logo ]", _PDF_STYLES["Normal"])
     )
 
     right_content = [
-        Paragraph(SYSTEM_NAME, system_style),
+        Paragraph(SYSTEM_NAME, _STYLE_PDF_SYSTEM),
         Spacer(1, 0.1*cm),
-        Paragraph(report_title, report_style),
+        Paragraph(report_title, _STYLE_PDF_REPORT),
         Spacer(1, 0.1*cm),
-        Paragraph(f"Generated: {timezone.now().strftime('%d %B %Y at %H:%M')}", date_style),
+        Paragraph(f"Generated: {timezone.now().strftime('%d %B %Y at %H:%M')}", _STYLE_PDF_DATE),
     ]
 
     header_table = Table([[logo_cell, right_content]], colWidths=[4*cm, None], hAlign="LEFT")
@@ -453,23 +495,15 @@ def _pdf_summary_table(summary):
     return t
 
 
-def _pdf_equipment_section(equipment_type, styles):
-    heading_style = ParagraphStyle(
-        "Heading", parent=styles["Heading2"], textColor=PDF_DARK,
-        fontName=_PDF_FONT_BOLD,
-    )
-    small_style = ParagraphStyle(
-        "Small", parent=styles["Normal"], fontSize=10,
-        fontName=_PDF_FONT, textColor=colors.grey,
-    )
+def _pdf_equipment_section(equipment_type):
     elements = []
     elements.append(HRFlowable(width="100%", thickness=1, color=PDF_GREY))
     elements.append(Spacer(1, 0.3*cm))
-    elements.append(Paragraph(equipment_type, heading_style))
+    elements.append(Paragraph(equipment_type, _STYLE_PDF_HEADING))
 
     rows = get_basic_rows(equipment_type=equipment_type)
     if not rows:
-        elements.append(Paragraph("No data available.", small_style))
+        elements.append(Paragraph("No data available.", _STYLE_PDF_SMALL))
         elements.append(Spacer(1, 0.4*cm))
         return elements
 
@@ -533,9 +567,9 @@ def generate_excel_all():
 
     ws_summary.append(["GRAND TOTAL", summary["__grand_total__"], "", "", "", "", "", ""])
     for cell in ws_summary[ws_summary.max_row]:
-        cell.font      = Font(name="Tahoma", bold=True, color=WHITE, size=12)
-        cell.fill      = PatternFill(start_color=ACCENT, end_color=ACCENT, fill_type="solid")
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font      = _FONT_GRAND
+        cell.fill      = _FILL_ACCENT
+        cell.alignment = _ALIGN_CENTER_NO_WRAP
     ws_summary.row_dimensions[ws_summary.max_row].height = 22
 
     for i, w in enumerate([28, 8, 8, 10, 14, 10, 10, 8], 1):
@@ -574,22 +608,19 @@ def generate_excel_by_type(equipment_type):
 # ─────────────────────────────────────────
 
 def generate_pdf_all():
-    styles        = getSampleStyleSheet()
-    heading_style = ParagraphStyle("Heading", parent=styles["Heading2"], textColor=PDF_DARK)
-
     elements = [
         _pdf_header("Full Equipment Report"),
         Spacer(1, 0.3*cm),
         HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
         Spacer(1, 0.5*cm),
-        Paragraph("Summary", heading_style),
+        Paragraph("Summary", _STYLE_PDF_HEADING),
         Spacer(1, 0.2*cm),
         _pdf_summary_table(get_summary()),
         Spacer(1, 0.8*cm),
     ]
 
     for eq_type in get_equipment_types():
-        elements.extend(_pdf_equipment_section(eq_type, styles))
+        elements.extend(_pdf_equipment_section(eq_type))
 
     return _build_pdf(elements)
 
@@ -599,14 +630,13 @@ def generate_pdf_all():
 # ─────────────────────────────────────────
 
 def generate_pdf_by_type(equipment_type):
-    styles   = getSampleStyleSheet()
     elements = [
         _pdf_header(f"{equipment_type} Report"),
         Spacer(1, 0.3*cm),
         HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
         Spacer(1, 0.5*cm),
     ]
-    elements.extend(_pdf_equipment_section(equipment_type, styles))
+    elements.extend(_pdf_equipment_section(equipment_type))
     return _build_pdf(elements)
 
 
@@ -715,9 +745,9 @@ def generate_stock_excel_all():
 
     ws_sum.append(["TOTAL", Stock.objects.count(), ""])
     for cell in ws_sum[ws_sum.max_row]:
-        cell.font      = Font(name="Tahoma", bold=True, color=WHITE, size=12)
-        cell.fill      = PatternFill(start_color=ACCENT, end_color=ACCENT, fill_type="solid")
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font      = _FONT_GRAND
+        cell.fill      = _FILL_ACCENT
+        cell.alignment = _ALIGN_CENTER_NO_WRAP
 
     for w, col in zip([30, 15, 10], ["A", "B", "C"]):
         ws_sum.column_dimensions[col].width = w
@@ -746,17 +776,15 @@ def generate_stock_excel_by_type(equipment_type):
 
 # ─── PDF helpers ──────────────────────────────────────────────────
 
-def _pdf_stock_section(equipment_type, styles):
-    heading_style = ParagraphStyle("Heading", parent=styles["Heading2"], textColor=PDF_DARK)
-    small_style   = ParagraphStyle("Small",   parent=styles["Normal"],   fontSize=10, fontName=_PDF_FONT, textColor=colors.grey)
+def _pdf_stock_section(equipment_type):
     elements = [
         HRFlowable(width="100%", thickness=1, color=PDF_GREY),
         Spacer(1, 0.3*cm),
-        Paragraph(equipment_type, heading_style),
+        Paragraph(equipment_type, _STYLE_PDF_HEADING),
     ]
     rows = [_stock_row(sn, s) for sn, s in enumerate(_get_stock_qs(equipment_type), start=1)]
     if not rows:
-        elements.append(Paragraph("No stock items available.", small_style))
+        elements.append(Paragraph("No stock items available.", _STYLE_PDF_SMALL))
         elements.append(Spacer(1, 0.4*cm))
         return elements
 
@@ -772,9 +800,6 @@ def _pdf_stock_section(equipment_type, styles):
 
 
 def generate_stock_pdf_all():
-    styles = getSampleStyleSheet()
-    heading_style = ParagraphStyle("Heading", parent=styles["Heading2"], textColor=PDF_DARK)
-
     types_in_stock = (
         Stock.objects.values_list("equipment__equipment_type", flat=True)
         .distinct().order_by("equipment__equipment_type")
@@ -809,26 +834,25 @@ def generate_stock_pdf_all():
         Spacer(1, 0.3*cm),
         HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
         Spacer(1, 0.5*cm),
-        Paragraph("Summary", heading_style),
+        Paragraph("Summary", _STYLE_PDF_HEADING),
         Spacer(1, 0.2*cm),
         summary_tbl,
         Spacer(1, 0.8*cm),
     ]
     for eq_type in types_in_stock:
-        elements.extend(_pdf_stock_section(eq_type, styles))
+        elements.extend(_pdf_stock_section(eq_type))
 
     return _build_pdf(elements)
 
 
 def generate_stock_pdf_by_type(equipment_type):
-    styles   = getSampleStyleSheet()
     elements = [
         _pdf_header(f"{equipment_type} Stock Report"),
         Spacer(1, 0.3*cm),
         HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
         Spacer(1, 0.5*cm),
     ]
-    elements.extend(_pdf_stock_section(equipment_type, styles))
+    elements.extend(_pdf_stock_section(equipment_type))
     return _build_pdf(elements)
 
 
@@ -929,9 +953,9 @@ def _write_unit_sheet(ws, unit_name, unit_qs):
     # Unit name banner
     ws.merge_cells(start_row=1, start_column=1, end_row=2, end_column=n_cols)
     banner = ws.cell(row=1, column=1, value=unit_name.upper())
-    banner.font      = Font(name="Tahoma", bold=True, color="FFFFFF", size=13)
+    banner.font      = _FONT_BANNER
     banner.fill      = _UNIT_HEADER_FILL
-    banner.alignment = Alignment(horizontal="center", vertical="center")
+    banner.alignment = _ALIGN_CENTER_NO_WRAP
     ws.row_dimensions[1].height = 30
     ws.row_dimensions[2].height = 10
 
@@ -951,9 +975,9 @@ def _write_unit_sheet(ws, unit_name, unit_qs):
             end_row=row_num, end_column=n_cols
         )
         sec_cell = ws.cell(row=row_num, column=1, value=label)
-        sec_cell.font      = Font(name="Tahoma", bold=True, color="FFFFFF", size=12)
+        sec_cell.font      = _FONT_SECTION
         sec_cell.fill      = _SECTION_ALT_FILL
-        sec_cell.alignment = Alignment(horizontal="center", vertical="center")
+        sec_cell.alignment = _ALIGN_CENTER_NO_WRAP
         ws.row_dimensions[row_num].height = 18
         row_num += 1
 
@@ -1010,9 +1034,9 @@ def generate_unit_excel_all():
             _data_cell(cell, alt=(i % 2 == 0))
     ws_sum.append(["TOTAL", grand, ""])
     for cell in ws_sum[ws_sum.max_row]:
-        cell.font      = Font(name="Tahoma", bold=True, color=WHITE, size=12)
-        cell.fill      = PatternFill(start_color=ACCENT, end_color=ACCENT, fill_type="solid")
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font      = _FONT_GRAND
+        cell.fill      = _FILL_ACCENT
+        cell.alignment = _ALIGN_CENTER_NO_WRAP
     for w, col in zip([30, 15, 10], ["A", "B", "C"]):
         ws_sum.column_dimensions[col].width = w
     _protect_sheet(ws_sum)
@@ -1048,22 +1072,14 @@ def generate_unit_excel_by_unit(unit_id):
 _UNIT_SCALED_WIDTHS = _scale_to_page(UNIT_COL_WIDTHS)
 
 
-def _pdf_unit_section(eq_type, section_num, unit_qs, styles):
-    label     = f"{section_num}. {_TYPE_LABELS.get(eq_type, eq_type.upper())}"
-    sec_style = ParagraphStyle(
-        "SecHead", parent=styles["Normal"],
-        fontSize=12, fontName=_PDF_FONT_BOLD,
-        textColor=colors.white,
-        backColor=colors.HexColor("#2E4DA0"),
-        spaceAfter=0, spaceBefore=4,
-        leftIndent=4,
-    )
+def _pdf_unit_section(eq_type, section_num, unit_qs):
+    label = f"{section_num}. {_TYPE_LABELS.get(eq_type, eq_type.upper())}"
     rows = _unit_device_rows(unit_qs, eq_type)
     if not rows:
         return []
 
     w_header, w_data = _wrap_rows(UNIT_FIELDS, rows)
-    elements = [Paragraph(label, sec_style)]
+    elements = [Paragraph(label, _STYLE_SEC_HEAD)]
     t = Table([w_header] + w_data, repeatRows=1, hAlign="LEFT", colWidths=_UNIT_SCALED_WIDTHS)
     t.setStyle(TABLE_STYLE)
     elements.append(t)
@@ -1071,12 +1087,7 @@ def _pdf_unit_section(eq_type, section_num, unit_qs, styles):
     return elements
 
 
-def _pdf_unit_block(unit, base_qs, styles):
-    heading_style = ParagraphStyle(
-        "UnitHead", parent=styles["Heading1"],
-        textColor=colors.HexColor("#003580"),
-        fontSize=11, fontName=_PDF_FONT_BOLD,
-    )
+def _pdf_unit_block(unit, base_qs):
     qs = base_qs.filter(unit=unit)
     if not qs.exists():
         return []
@@ -1084,21 +1095,20 @@ def _pdf_unit_block(unit, base_qs, styles):
     elements = [
         HRFlowable(width="100%", thickness=2, color=colors.HexColor("#003580")),
         Spacer(1, 0.2*cm),
-        Paragraph(unit.name.upper(), heading_style),
+        Paragraph(unit.name.upper(), _STYLE_UNIT_HEAD),
         Spacer(1, 0.2*cm),
     ]
     section_num = 0
     for eq_type in _TYPE_ORDER:
         if qs.filter(equipment_type=eq_type).exists():
             section_num += 1
-            elements.extend(_pdf_unit_section(eq_type, section_num, qs, styles))
+            elements.extend(_pdf_unit_section(eq_type, section_num, qs))
 
     elements.append(Spacer(1, 0.6*cm))
     return elements
 
 
 def generate_unit_pdf_all():
-    styles   = getSampleStyleSheet()
     elements = [
         _pdf_header("Equipment Report by Organisational Unit"),
         Spacer(1, 0.4*cm),
@@ -1106,18 +1116,17 @@ def generate_unit_pdf_all():
     base  = _base_unit_qs()
     units = Unit.objects.order_by("name")
     for unit in units:
-        elements.extend(_pdf_unit_block(unit, base, styles))
+        elements.extend(_pdf_unit_block(unit, base))
     return _build_pdf(elements)
 
 
 def generate_unit_pdf_by_unit(unit_id):
     unit     = Unit.objects.get(pk=unit_id)
-    styles   = getSampleStyleSheet()
     elements = [
         _pdf_header(f"{unit.name.upper()} — Equipment Report"),
         Spacer(1, 0.4*cm),
     ]
-    elements.extend(_pdf_unit_block(unit, _base_unit_qs(), styles))
+    elements.extend(_pdf_unit_block(unit, _base_unit_qs()))
     return _build_pdf(elements)
 
 
@@ -1154,9 +1163,9 @@ def generate_region_excel_all():
             _data_cell(cell, alt=(i % 2 == 0))
     ws_sum.append(["TOTAL", grand, ""])
     for cell in ws_sum[ws_sum.max_row]:
-        cell.font      = Font(name="Tahoma", bold=True, color=WHITE, size=12)
-        cell.fill      = PatternFill(start_color=ACCENT, end_color=ACCENT, fill_type="solid")
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font      = _FONT_GRAND
+        cell.fill      = _FILL_ACCENT
+        cell.alignment = _ALIGN_CENTER_NO_WRAP
     for w, col in zip([30, 15, 10], ["A", "B", "C"]):
         ws_sum.column_dimensions[col].width = w
     _protect_sheet(ws_sum)
@@ -1187,12 +1196,7 @@ def generate_region_excel_by_region(region_id):
     return output
 
 
-def _pdf_region_block(region, base_qs, styles):
-    heading_style = ParagraphStyle(
-        "RegionHead", parent=styles["Heading1"],
-        textColor=colors.HexColor("#003580"),
-        fontSize=11, fontName=_PDF_FONT_BOLD,
-    )
+def _pdf_region_block(region, base_qs):
     qs = base_qs.filter(region=region)
     if not qs.exists():
         return []
@@ -1200,21 +1204,20 @@ def _pdf_region_block(region, base_qs, styles):
     elements = [
         HRFlowable(width="100%", thickness=2, color=colors.HexColor("#003580")),
         Spacer(1, 0.2*cm),
-        Paragraph(region.name.upper(), heading_style),
+        Paragraph(region.name.upper(), _STYLE_REGION_HEAD),
         Spacer(1, 0.2*cm),
     ]
     section_num = 0
     for eq_type in _TYPE_ORDER:
         if qs.filter(equipment_type=eq_type).exists():
             section_num += 1
-            elements.extend(_pdf_unit_section(eq_type, section_num, qs, styles))
+            elements.extend(_pdf_unit_section(eq_type, section_num, qs))
 
     elements.append(Spacer(1, 0.6*cm))
     return elements
 
 
 def generate_region_pdf_all():
-    styles   = getSampleStyleSheet()
     elements = [
         _pdf_header("Equipment Report by Region"),
         Spacer(1, 0.4*cm),
@@ -1222,18 +1225,17 @@ def generate_region_pdf_all():
     base    = _base_region_qs()
     regions = Region.objects.order_by("name")
     for region in regions:
-        elements.extend(_pdf_region_block(region, base, styles))
+        elements.extend(_pdf_region_block(region, base))
     return _build_pdf(elements)
 
 
 def generate_region_pdf_by_region(region_id):
     region   = Region.objects.get(pk=region_id)
-    styles   = getSampleStyleSheet()
     elements = [
         _pdf_header(f"{region.name.upper()} — Equipment Report"),
         Spacer(1, 0.4*cm),
     ]
-    elements.extend(_pdf_region_block(region, _base_region_qs(), styles))
+    elements.extend(_pdf_region_block(region, _base_region_qs()))
     return _build_pdf(elements)
 
 
@@ -1270,9 +1272,9 @@ def generate_dpu_excel_all():
             _data_cell(cell, alt=(i % 2 == 0))
     ws_sum.append(["TOTAL", grand, ""])
     for cell in ws_sum[ws_sum.max_row]:
-        cell.font      = Font(name="Tahoma", bold=True, color=WHITE, size=12)
-        cell.fill      = PatternFill(start_color=ACCENT, end_color=ACCENT, fill_type="solid")
-        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font      = _FONT_GRAND
+        cell.fill      = _FILL_ACCENT
+        cell.alignment = _ALIGN_CENTER_NO_WRAP
     for w, col in zip([30, 15, 10], ["A", "B", "C"]):
         ws_sum.column_dimensions[col].width = w
     _protect_sheet(ws_sum)
@@ -1303,12 +1305,7 @@ def generate_dpu_excel_by_dpu(dpu_id):
     return output
 
 
-def _pdf_dpu_block(dpu, base_qs, styles):
-    heading_style = ParagraphStyle(
-        "DPUHead", parent=styles["Heading1"],
-        textColor=colors.HexColor("#003580"),
-        fontSize=11, fontName=_PDF_FONT_BOLD,
-    )
+def _pdf_dpu_block(dpu, base_qs):
     qs = base_qs.filter(dpu=dpu)
     if not qs.exists():
         return []
@@ -1316,21 +1313,20 @@ def _pdf_dpu_block(dpu, base_qs, styles):
     elements = [
         HRFlowable(width="100%", thickness=2, color=colors.HexColor("#003580")),
         Spacer(1, 0.2*cm),
-        Paragraph(dpu.name.upper(), heading_style),
+        Paragraph(dpu.name.upper(), _STYLE_DPU_HEAD),
         Spacer(1, 0.2*cm),
     ]
     section_num = 0
     for eq_type in _TYPE_ORDER:
         if qs.filter(equipment_type=eq_type).exists():
             section_num += 1
-            elements.extend(_pdf_unit_section(eq_type, section_num, qs, styles))
+            elements.extend(_pdf_unit_section(eq_type, section_num, qs))
 
     elements.append(Spacer(1, 0.6*cm))
     return elements
 
 
 def generate_dpu_pdf_all():
-    styles   = getSampleStyleSheet()
     elements = [
         _pdf_header("Equipment Report by DPU"),
         Spacer(1, 0.4*cm),
@@ -1338,16 +1334,15 @@ def generate_dpu_pdf_all():
     base = _base_dpu_qs()
     dpus = DPU.objects.order_by("name")
     for dpu in dpus:
-        elements.extend(_pdf_dpu_block(dpu, base, styles))
+        elements.extend(_pdf_dpu_block(dpu, base))
     return _build_pdf(elements)
 
 
 def generate_dpu_pdf_by_dpu(dpu_id):
     dpu      = DPU.objects.get(pk=dpu_id)
-    styles   = getSampleStyleSheet()
     elements = [
         _pdf_header(f"{dpu.name.upper()} — Equipment Report"),
         Spacer(1, 0.4*cm),
     ]
-    elements.extend(_pdf_dpu_block(dpu, _base_dpu_qs(), styles))
+    elements.extend(_pdf_dpu_block(dpu, _base_dpu_qs()))
     return _build_pdf(elements)
