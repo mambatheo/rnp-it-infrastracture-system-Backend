@@ -1,3 +1,6 @@
+import base64
+
+from django.db.models import Count, Exists, OuterRef, Q
 from django.http import HttpResponse
 from django.utils import timezone
 
@@ -9,14 +12,13 @@ from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+from celery.result import AsyncResult
 
 from .models import (
     RegionOffice, Region, DPUOffice, DPU, Station,
     Unit, Directorate, Department, Office,
     EquipmentCategory, EquipmentStatus, Brand,
-    Equipment, Stock, Deployment,   
-  
-   
+    Equipment, Stock, Deployment,
 )
 from .serializers import (
     RegionOfficeSerializer, RegionSerializer,
@@ -26,34 +28,50 @@ from .serializers import (
     EquipmentCategorySerializer, EquipmentStatusSerializer, BrandSerializer,
     EquipmentSerializer, StockSerializer, DeploymentSerializer,
 )
-from .reports import (
-    generate_excel_all, generate_excel_by_type,
-    generate_pdf_all,   generate_pdf_by_type,
-    generate_stock_excel_all, generate_stock_excel_by_type,
-    generate_stock_pdf_all,   generate_stock_pdf_by_type,
-    generate_unit_excel_all,  generate_unit_excel_by_unit,
-    generate_unit_pdf_all,    generate_unit_pdf_by_unit,
-    generate_region_excel_all, generate_region_excel_by_region,
-    generate_region_pdf_all,   generate_region_pdf_by_region,
-    generate_dpu_excel_all,    generate_dpu_excel_by_dpu,
-    generate_dpu_pdf_all,      generate_dpu_pdf_by_dpu,
+from .tasks import (
+    task_excel_all,            task_excel_by_type,
+    task_pdf_all,              task_pdf_by_type,
+    task_stock_excel_all,      task_stock_excel_by_type,
+    task_stock_pdf_all,        task_stock_pdf_by_type,
+    task_unit_excel_all,       task_unit_excel_by_unit,
+    task_unit_pdf_all,         task_unit_pdf_by_unit,
+    task_region_excel_all,     task_region_excel_by_region,
+    task_region_pdf_all,       task_region_pdf_by_region,
+    task_dpu_excel_all,        task_dpu_excel_by_dpu,
+    task_dpu_pdf_all,          task_dpu_pdf_by_dpu,
 )
 
+# ─────────────────────────────────────────
+# PERMISSION HELPERS
+# ─────────────────────────────────────────
 
-def _user_from_token_param(request):
-  
-    token_str = request.query_params.get("token")
-    if not token_str:
-        return None
-    auth = JWTAuthentication()
-    try:
-        validated = auth.get_validated_token(token_str)
-        return auth.get_user(validated)
-    except (InvalidToken, TokenError):
-        return None
+def _is_privileged(user):
+    """Return True for ADMIN / IT_STAFF / superusers — they see everything."""
+    return (
+        user.is_superuser
+        or getattr(user, "role", None) in ("ADMIN", "IT_STAFF")
+    )
 
 
+def _location_q(user):
+    """
+    Build a Q filter matching equipment assigned to the user's location.
+    USER / TECHNICIAN can be assigned to dpu, region, and/or unit.
+    Any match on ANY of those fields shows the equipment.
+    """
+    q = Q()
+    if getattr(user, "dpu_id", None):
+        q |= Q(dpu=user.dpu)
+    if getattr(user, "region_id", None):
+        q |= Q(region=user.region)
+    if getattr(user, "unit_id", None):
+        q |= Q(unit=user.unit)
+    return q
 
+
+# ─────────────────────────────────────────
+# LOCATION VIEWSETS
+# ─────────────────────────────────────────
 
 @extend_schema(tags=["Region Offices"])
 class RegionOfficeViewSet(viewsets.ModelViewSet):
@@ -142,6 +160,10 @@ class OfficeViewSet(viewsets.ModelViewSet):
     search_fields      = ["name"]
 
 
+# ─────────────────────────────────────────
+# CLASSIFICATION VIEWSETS
+# ─────────────────────────────────────────
+
 @extend_schema(tags=["Equipment Categories"])
 class EquipmentCategoryViewSet(viewsets.ModelViewSet):
     queryset           = EquipmentCategory.objects.all()
@@ -149,6 +171,18 @@ class EquipmentCategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends    = [filters.SearchFilter]
     search_fields      = ["name"]
+
+    def perform_destroy(self, instance):
+        from django.db.models.deletion import ProtectedError
+        from rest_framework.exceptions import ValidationError
+        try:
+            instance.delete()
+        except ProtectedError as e:
+            blocking = ", ".join(str(obj) for obj in list(e.protected_objects)[:10])
+            raise ValidationError(
+                f"Cannot delete '{instance.name}' because it is still referenced by: {blocking}. "
+                "Reassign or delete those records first."
+            )
 
 
 @extend_schema(tags=["Equipment Status"])
@@ -170,6 +204,9 @@ class BrandViewSet(viewsets.ModelViewSet):
     search_fields      = ["name"]
 
 
+# ─────────────────────────────────────────
+# EQUIPMENT VIEWSET
+# ─────────────────────────────────────────
 
 @extend_schema(tags=["Equipment"])
 class EquipmentViewSet(viewsets.ModelViewSet):
@@ -178,17 +215,17 @@ class EquipmentViewSet(viewsets.ModelViewSet):
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
 
     filterset_fields = {
-        "equipment_type":     ["exact"],
-        "status":             ["exact"],       
-        "registration_intent": ["exact"],
-        "region":             ["exact"],
-        "dpu":                ["exact"],
-        "station":            ["exact"],
-        "unit":               ["exact"],
-        "directorate":        ["exact"],
-        "department":         ["exact"],
-        "office":             ["exact"],
-        "brand":              ["exact"],
+        "equipment_type__name": ["exact"],
+        "status":               ["exact"],
+        "registration_intent":  ["exact"],
+        "region":               ["exact"],
+        "dpu":                  ["exact"],
+        "station":              ["exact"],
+        "unit":                 ["exact"],
+        "directorate":          ["exact"],
+        "department":           ["exact"],
+        "office":               ["exact"],
+        "brand":                ["exact"],
     }
 
     search_fields = [
@@ -201,15 +238,24 @@ class EquipmentViewSet(viewsets.ModelViewSet):
     ordering        = ["-created_at"]
 
     def get_queryset(self):
-        return Equipment.objects.select_related(
+        qs = Equipment.objects.select_related(
+            "equipment_type",
             "brand", "status",
             "region", "dpu", "station",
             "unit", "directorate", "department", "office",
             "created_by", "updated_by",
         ).prefetch_related("stock")
 
+        user = self.request.user
+        if _is_privileged(user):
+            return qs
+
+        loc_q = _location_q(user)
+        if not loc_q:
+            return qs.none()
+        return qs.filter(loc_q)
+
     def perform_create(self, serializer):
-       
         serializer.save(
             created_by=self.request.user,
             updated_by=self.request.user,
@@ -219,7 +265,9 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         serializer.save(updated_by=self.request.user)
 
 
-
+# ─────────────────────────────────────────
+# STOCK VIEWSET
+# ─────────────────────────────────────────
 
 @extend_schema(tags=["Stock"])
 class StockViewSet(viewsets.ModelViewSet):
@@ -227,7 +275,7 @@ class StockViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
 
-    filterset_fields = ["condition", "equipment__equipment_type"]
+    filterset_fields = ["condition", "equipment__equipment_type__name"]
 
     search_fields = [
         "equipment__name", "equipment__serial_number",
@@ -238,15 +286,34 @@ class StockViewSet(viewsets.ModelViewSet):
     ordering        = ["-date_added"]
 
     def get_queryset(self):
-        return Stock.objects.select_related(
+        qs = Stock.objects.select_related(
             "equipment__brand", "equipment__status",
+            "equipment__region", "equipment__dpu", "equipment__unit",
             "added_by",
         )
+
+        user = self.request.user
+        if _is_privileged(user):
+            return qs
+
+        q = Q()
+        if getattr(user, "dpu_id", None):
+            q |= Q(equipment__dpu=user.dpu)
+        if getattr(user, "region_id", None):
+            q |= Q(equipment__region=user.region)
+        if getattr(user, "unit_id", None):
+            q |= Q(equipment__unit=user.unit)
+        if not q:
+            return qs.none()
+        return qs.filter(q)
 
     def perform_create(self, serializer):
         serializer.save(added_by=self.request.user)
 
 
+# ─────────────────────────────────────────
+# DEPLOYMENT VIEWSET
+# ─────────────────────────────────────────
 
 @extend_schema(tags=["Deployments"])
 class DeploymentViewSet(viewsets.ModelViewSet):
@@ -255,21 +322,21 @@ class DeploymentViewSet(viewsets.ModelViewSet):
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
 
     filterset_fields = {
-        "status":                    ["exact"],
-        "equipment":                 ["exact"],
-        "equipment__equipment_type": ["exact"],
-        "issued_to_user":            ["exact", "icontains"],
-        "issued_to_region":          ["exact"],
-        "issued_to_dpu":             ["exact"],
-        "issued_to_station":         ["exact"],
-        "issued_to_unit":            ["exact"],
-        "issued_to_directorate":     ["exact"],
-        "issued_to_department":      ["exact"],
-        "issued_to_office":          ["exact"],
-        "issued_date":               ["exact", "gte", "lte"],
-        "returned_date":             ["exact", "gte", "lte"],
-        "expected_return_date":      ["exact", "gte", "lte"],
-        "condition_on_return":       ["exact"],
+        "status":                          ["exact"],
+        "equipment":                       ["exact"],
+        "equipment__equipment_type__name": ["exact"],
+        "issued_to_user":                  ["exact", "icontains"],
+        "issued_to_region":                ["exact"],
+        "issued_to_dpu":                   ["exact"],
+        "issued_to_station":               ["exact"],
+        "issued_to_unit":                  ["exact"],
+        "issued_to_directorate":           ["exact"],
+        "issued_to_department":            ["exact"],
+        "issued_to_office":                ["exact"],
+        "issued_date":                     ["exact", "gte", "lte"],
+        "returned_date":                   ["exact", "gte", "lte"],
+        "expected_return_date":            ["exact", "gte", "lte"],
+        "condition_on_return":             ["exact"],
     }
 
     search_fields = [
@@ -285,8 +352,8 @@ class DeploymentViewSet(viewsets.ModelViewSet):
     ordering        = ["-issued_date"]
 
     def get_queryset(self):
-        return Deployment.objects.select_related(
-            "equipment__brand", "equipment__status",
+        qs = Deployment.objects.select_related(
+            "equipment__brand", "equipment__status", "equipment__equipment_type",
             "issued_to_region_office",
             "issued_to_region", "issued_to_dpu_office", "issued_to_dpu",
             "issued_to_station",
@@ -295,13 +362,46 @@ class DeploymentViewSet(viewsets.ModelViewSet):
             "issued_by", "return_confirmed_by",
         )
 
+        user = self.request.user
+        if _is_privileged(user):
+            return qs
+
+        q = Q()
+        if getattr(user, "dpu_id", None):
+            q |= Q(issued_to_dpu=user.dpu)
+            q |= Q(equipment__dpu=user.dpu)
+        if getattr(user, "region_id", None):
+            q |= Q(issued_to_region=user.region)
+            q |= Q(equipment__region=user.region)
+        if getattr(user, "unit_id", None):
+            q |= Q(issued_to_unit=user.unit)
+            q |= Q(equipment__unit=user.unit)
+        if not q:
+            return qs.none()
+        return qs.filter(q)
+
     def perform_create(self, serializer):
         serializer.save(issued_by=self.request.user)
 
 
+# ═════════════════════════════════════════════════════════════════
+#  REPORT VIEWS  (async via Celery)
+# ═════════════════════════════════════════════════════════════════
+
+def _user_from_token_param(request):
+    """Fall-back: authenticate via ?token= query-param (used for direct download links)."""
+    token_str = request.query_params.get("token")
+    if not token_str:
+        return None
+    auth = JWTAuthentication()
+    try:
+        validated = auth.get_validated_token(token_str)
+        return auth.get_user(validated)
+    except (InvalidToken, TokenError):
+        return None
+
 
 class _ReportBaseView(APIView):
-   
     authentication_classes = [JWTAuthentication]
     permission_classes      = [permissions.IsAuthenticated]
 
@@ -315,238 +415,231 @@ class _ReportBaseView(APIView):
             request.user = user
 
 
+XLSX_CT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+PDF_CT  = "application/pdf"
+
+
+def _enqueue(task_fn, *args):
+    """
+    Dispatch a Celery task and immediately return HTTP 202 with the task_id.
+    The frontend polls with ?task_id=<id> until the file is ready.
+    """
+    result = task_fn.delay(*args)
+    return Response({"task_id": result.id, "status": "PENDING"}, status=202)
+
+
+def _poll_or_download(request, task_id, filename, content_type):
+    """
+    Called when the frontend polls with ?task_id=<id>.
+    - PENDING / STARTED / RETRY  → 202 so the frontend keeps polling
+    - SUCCESS                    → stream the file and forget the result
+    - FAILURE                    → 500 with error detail
+    """
+    result = AsyncResult(task_id)
+
+    if result.state in ("PENDING", "STARTED", "RETRY"):
+        return Response({"task_id": task_id, "status": result.state}, status=202)
+
+    if result.state == "FAILURE":
+        return Response(
+            {"task_id": task_id, "status": "FAILURE", "detail": str(result.result)},
+            status=500,
+        )
+
+    # SUCCESS — base64 → bytes → HTTP file response
+    raw  = base64.b64decode(result.result)
+    resp = HttpResponse(raw, content_type=content_type)
+    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+    result.forget()   # remove from result backend to free space
+    return resp
+
+
+# ── Equipment reports ─────────────────────────────────────────────────────────
+
 @extend_schema(tags=["Reports"])
 class EquipmentExcelReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
-        today = timezone.now().strftime("%Y%m%d")
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        slug    = (equipment_type or "all").replace(" ", "_").lower()
+        filename = f"equipment_{slug}_{today}.xlsx"
+
+        if task_id:
+            return _poll_or_download(request, task_id, filename, XLSX_CT)
         if equipment_type:
-            buf      = generate_excel_by_type(equipment_type)
-            slug     = equipment_type.replace(" ", "_").lower()
-            filename = f"equipment_{slug}_{today}.xlsx"
-        else:
-            buf      = generate_excel_all()
-            filename = f"equipment_all_{today}.xlsx"
-        resp = HttpResponse(
-            buf.read(),
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
+            return _enqueue(task_excel_by_type, equipment_type)
+        return _enqueue(task_excel_all)
 
 
 @extend_schema(tags=["Reports"])
 class EquipmentPDFReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
-        today = timezone.now().strftime("%Y%m%d")
-        if equipment_type:
-            buf      = generate_pdf_by_type(equipment_type)
-            slug     = equipment_type.replace(" ", "_").lower()
-            filename = f"equipment_{slug}_{today}.pdf"
-        else:
-            buf      = generate_pdf_all()
-            filename = f"equipment_all_{today}.pdf"
-        resp = HttpResponse(buf.read(), content_type="application/pdf")
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        slug    = (equipment_type or "all").replace(" ", "_").lower()
+        filename = f"equipment_{slug}_{today}.pdf"
 
+        if task_id:
+            return _poll_or_download(request, task_id, filename, PDF_CT)
+        if equipment_type:
+            return _enqueue(task_pdf_by_type, equipment_type)
+        return _enqueue(task_pdf_all)
+
+
+# ── Stock reports ─────────────────────────────────────────────────────────────
 
 @extend_schema(tags=["Reports"])
 class StockExcelReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
-        today = timezone.now().strftime("%Y%m%d")
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        slug    = (equipment_type or "all").replace(" ", "_").lower()
+        filename = f"stock_{slug}_{today}.xlsx"
+
+        if task_id:
+            return _poll_or_download(request, task_id, filename, XLSX_CT)
         if equipment_type:
-            buf      = generate_stock_excel_by_type(equipment_type)
-            slug     = equipment_type.replace(" ", "_").lower()
-            filename = f"stock_{slug}_{today}.xlsx"
-        else:
-            buf      = generate_stock_excel_all()
-            filename = f"stock_all_{today}.xlsx"
-        resp = HttpResponse(
-            buf.read(),
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
+            return _enqueue(task_stock_excel_by_type, equipment_type)
+        return _enqueue(task_stock_excel_all)
 
 
 @extend_schema(tags=["Reports"])
 class StockPDFReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
-        today = timezone.now().strftime("%Y%m%d")
-        if equipment_type:
-            buf      = generate_stock_pdf_by_type(equipment_type)
-            slug     = equipment_type.replace(" ", "_").lower()
-            filename = f"stock_{slug}_{today}.pdf"
-        else:
-            buf      = generate_stock_pdf_all()
-            filename = f"stock_all_{today}.pdf"
-        resp = HttpResponse(buf.read(), content_type="application/pdf")
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        slug    = (equipment_type or "all").replace(" ", "_").lower()
+        filename = f"stock_{slug}_{today}.pdf"
 
+        if task_id:
+            return _poll_or_download(request, task_id, filename, PDF_CT)
+        if equipment_type:
+            return _enqueue(task_stock_pdf_by_type, equipment_type)
+        return _enqueue(task_stock_pdf_all)
+
+
+# ── Unit reports ──────────────────────────────────────────────────────────────
 
 @extend_schema(tags=["Reports"])
 class UnitExcelReportView(_ReportBaseView):
     def get(self, request, unit_id=None):
-        today = timezone.now().strftime("%Y%m%d")
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        filename = f"unit_{unit_id or 'all'}_{today}.xlsx"
+
+        if task_id:
+            return _poll_or_download(request, task_id, filename, XLSX_CT)
         if unit_id:
-            try:
-                unit = Unit.objects.get(pk=unit_id)
-            except Unit.DoesNotExist:
-                return Response({"detail": "Unit not found."}, status=404)
-            buf      = generate_unit_excel_by_unit(unit_id)
-            slug     = unit.name.replace(" ", "_").lower()
-            filename = f"unit_{slug}_{today}.xlsx"
-        else:
-            buf      = generate_unit_excel_all()
-            filename = f"units_all_{today}.xlsx"
-        resp = HttpResponse(
-            buf.read(),
-            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
+            return _enqueue(task_unit_excel_by_unit, str(unit_id))
+        return _enqueue(task_unit_excel_all)
 
 
 @extend_schema(tags=["Reports"])
 class UnitPDFReportView(_ReportBaseView):
     def get(self, request, unit_id=None):
-        today = timezone.now().strftime("%Y%m%d")
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        filename = f"unit_{unit_id or 'all'}_{today}.pdf"
+
+        if task_id:
+            return _poll_or_download(request, task_id, filename, PDF_CT)
         if unit_id:
-            try:
-                unit = Unit.objects.get(pk=unit_id)
-            except Unit.DoesNotExist:
-                return Response({"detail": "Unit not found."}, status=404)
-            buf      = generate_unit_pdf_by_unit(unit_id)
-            slug     = unit.name.replace(" ", "_").lower()
-            filename = f"unit_{slug}_{today}.pdf"
-        else:
-            buf      = generate_unit_pdf_all()
-            filename = f"units_all_{today}.pdf"
-        resp = HttpResponse(buf.read(), content_type="application/pdf")
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
-    
+            return _enqueue(task_unit_pdf_by_unit, str(unit_id))
+        return _enqueue(task_unit_pdf_all)
+
+
+# ── Region reports ────────────────────────────────────────────────────────────
+
 @extend_schema(tags=["Reports"])
 class RegionExcelReportView(_ReportBaseView):
     def get(self, request, region_id=None):
-        today = timezone.now().strftime("%Y%m%d")
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        filename = f"region_{region_id or 'all'}_{today}.xlsx"
+
+        if task_id:
+            return _poll_or_download(request, task_id, filename, XLSX_CT)
         if region_id:
-            try:
-                region = Region.objects.get(pk=region_id)
-            except Region.DoesNotExist:
-                return Response({"detail": "Region not found."}, status=404)
-            buf      = generate_region_excel_by_region(region_id)
-            slug     = region.name.replace(" ", "_").lower()
-            filename = f"region_{slug}_{today}.xlsx"
-        else:
-            buf      = generate_region_excel_all()
-            filename = f"regions_all_{today}.xlsx"
-        resp = HttpResponse(buf.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
+            return _enqueue(task_region_excel_by_region, str(region_id))
+        return _enqueue(task_region_excel_all)
 
 
 @extend_schema(tags=["Reports"])
 class RegionPDFReportView(_ReportBaseView):
     def get(self, request, region_id=None):
-        today = timezone.now().strftime("%Y%m%d")
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        filename = f"region_{region_id or 'all'}_{today}.pdf"
+
+        if task_id:
+            return _poll_or_download(request, task_id, filename, PDF_CT)
         if region_id:
-            try:
-                region = Region.objects.get(pk=region_id)
-            except Region.DoesNotExist:
-                return Response({"detail": "Region not found."}, status=404)
-            buf      = generate_region_pdf_by_region(region_id)
-            slug     = region.name.replace(" ", "_").lower()
-            filename = f"region_{slug}_{today}.pdf"
-        else:
-            buf      = generate_region_pdf_all()
-            filename = f"regions_all_{today}.pdf"
-        resp = HttpResponse(buf.read(), content_type="application/pdf")
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
+            return _enqueue(task_region_pdf_by_region, str(region_id))
+        return _enqueue(task_region_pdf_all)
 
 
-# ─────────────────────────────────────────────
-# DPU REPORTS
-# ─────────────────────────────────────────────
+# ── DPU reports ───────────────────────────────────────────────────────────────
 
 @extend_schema(tags=["Reports"])
 class DPUExcelReportView(_ReportBaseView):
     def get(self, request, dpu_id=None):
-        today = timezone.now().strftime("%Y%m%d")
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        filename = f"dpu_{dpu_id or 'all'}_{today}.xlsx"
+
+        if task_id:
+            return _poll_or_download(request, task_id, filename, XLSX_CT)
         if dpu_id:
-            try:
-                dpu = DPU.objects.get(pk=dpu_id)
-            except DPU.DoesNotExist:
-                return Response({"detail": "DPU not found."}, status=404)
-            buf      = generate_dpu_excel_by_dpu(dpu_id)
-            slug     = dpu.name.replace(" ", "_").lower()
-            filename = f"dpu_{slug}_{today}.xlsx"
-        else:
-            buf      = generate_dpu_excel_all()          
-            filename = f"dpus_all_{today}.xlsx"
-        resp = HttpResponse(buf.read(), content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
+            return _enqueue(task_dpu_excel_by_dpu, str(dpu_id))
+        return _enqueue(task_dpu_excel_all)
 
 
 @extend_schema(tags=["Reports"])
 class DPUPDFReportView(_ReportBaseView):
     def get(self, request, dpu_id=None):
-        today = timezone.now().strftime("%Y%m%d")
-        if dpu_id:                                       
-            try:
-                dpu = DPU.objects.get(pk=dpu_id)
-            except DPU.DoesNotExist:
-                return Response({"detail": "DPU not found."}, status=404)
-            buf      = generate_dpu_pdf_by_dpu(dpu_id)
-            slug     = dpu.name.replace(" ", "_").lower()
-            filename = f"dpu_{slug}_{today}.pdf"
-        else:
-            buf      = generate_dpu_pdf_all()
-            filename = f"dpus_all_{today}.pdf"
-        resp = HttpResponse(buf.read(), content_type="application/pdf")
-        resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-        return resp
+        today   = timezone.now().strftime("%Y%m%d")
+        task_id = request.query_params.get("task_id")
+        filename = f"dpu_{dpu_id or 'all'}_{today}.pdf"
 
+        if task_id:
+            return _poll_or_download(request, task_id, filename, PDF_CT)
+        if dpu_id:
+            return _enqueue(task_dpu_pdf_by_dpu, str(dpu_id))
+        return _enqueue(task_dpu_pdf_all)
+
+
+# ═════════════════════════════════════════════════════════════════
+#  REPORT COUNTS  (dashboard aggregations)
+# ═════════════════════════════════════════════════════════════════
 
 @extend_schema(tags=["Reports"])
 class ReportCountsView(APIView):
     """
     Single aggregated endpoint for the Reports page.
-    Replaces ~60–80 individual API calls with 1 request.
+    Replaces ~60-80 individual API calls with 1 request.
 
     GET /api/v1/equipment/reports/counts/
     """
     permission_classes = [permissions.IsAuthenticated]
 
-    EQUIPMENT_TYPES = [
-        "Desktop", "Laptop", "Server", "TV Screen", "Projector",
-        "Decoder", "Printer", "Network Device", "Telephone",
-        "External Storage", "Peripheral", "UPS",
-    ]
-
     def get(self, request):
-        from django.db.models import Count
-
         # 1. Equipment count per type
         eq_qs = (
             Equipment.objects
-            .filter(equipment_type__in=self.EQUIPMENT_TYPES)
-            .values("equipment_type")
+            .filter(equipment_type__isnull=False)
+            .values("equipment_type__name")
             .annotate(count=Count("id"))
         )
-        equipment_counts = {row["equipment_type"]: row["count"] for row in eq_qs}
+        equipment_counts = {row["equipment_type__name"]: row["count"] for row in eq_qs}
 
         # 2. Stock count per equipment type
         st_qs = (
             Stock.objects
-            .filter(equipment__equipment_type__in=self.EQUIPMENT_TYPES)
-            .values("equipment__equipment_type")
+            .filter(equipment__equipment_type__isnull=False)
+            .values("equipment__equipment_type__name")
             .annotate(count=Count("id"))
         )
-        stock_counts = {row["equipment__equipment_type"]: row["count"] for row in st_qs}
+        stock_counts = {row["equipment__equipment_type__name"]: row["count"] for row in st_qs}
 
         # 3. Equipment count per Unit (includes units with 0 items)
         unit_qs = (
@@ -597,10 +690,17 @@ class ReportCountsView(APIView):
                 dpu_counts[did] = {"count": 0, "name": d["name"]}
 
         # 6. Grand totals
+        _in_stock      = Stock.objects.filter(equipment=OuterRef("pk"))
+        _active_deploy = Deployment.objects.filter(equipment=OuterRef("pk"), status="Active")
         totals = {
-            "equipment":   Equipment.objects.count(),
-            "stock":       Stock.objects.count(),
-            "deployments": Deployment.objects.count(),
+            "equipment":          Equipment.objects.count(),
+            "stock":              Stock.objects.count(),
+            "deployments":        Deployment.objects.count(),
+            "active_deployments": Deployment.objects.filter(status="Active").count(),
+            "unassigned":         Equipment.objects.filter(
+                                      ~Exists(_in_stock),
+                                      ~Exists(_active_deploy),
+                                  ).count(),
         }
 
         return Response({

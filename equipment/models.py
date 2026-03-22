@@ -5,10 +5,6 @@ from django.utils.translation import gettext_lazy as _
 from django.core.validators import MinLengthValidator, MaxLengthValidator
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-# from django.contrib.auth import get_user_model
-
-# User = get_user_model()
-
 
 
 class RegionOffice(models.Model):
@@ -226,9 +222,9 @@ class EquipmentStatus(models.Model):
     name = models.CharField(max_length=100, unique=True)
 
     class Meta:
-        ordering         = ["name"]
-        db_table         = "equipment_status"
-        verbose_name     = _("Equipment Status")
+        ordering  = ["name"]
+        db_table  = "equipment_status"
+        verbose_name = _("Equipment Status")
         verbose_name_plural = _("Equipment Statuses")
 
     def __str__(self):
@@ -249,8 +245,8 @@ class Equipment(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    name               = models.CharField(max_length=100)
-    equipment_type     = models.CharField(max_length=30)
+    name  = models.CharField(max_length=100)
+    equipment_type  = models.ForeignKey(EquipmentCategory, on_delete=models.PROTECT, related_name="equipment_types")
     registration_intent = models.CharField(
         max_length=20,
         choices=RegistrationIntent.choices,
@@ -337,7 +333,7 @@ class Equipment(models.Model):
 
     @property
     def age_since_deployed(self):
-        """Human-readable elapsed time since deployment_date."""
+        
         if not self.deployment_date:
             return None
         total_days = (timezone.now().date() - self.deployment_date).days
@@ -351,7 +347,7 @@ class Equipment(models.Model):
 
     @property
     def is_in_stock(self):
-        """True when a Stock record exists for this equipment."""
+        
         return hasattr(self, "stock")
 
     # ── Validation ────────────────────────────────────────────────────────────

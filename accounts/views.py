@@ -31,8 +31,8 @@ class UserViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if user.role == User.ADMIN or user.is_superuser:
-            return User.objects.all().order_by("date_joined")
-        return User.objects.filter(id=user.id).order_by("date_joined")
+            return User.objects.all().order_by("created_at")
+        return User.objects.filter(id=user.id).order_by("created_at")
 
     def get_serializer_class(self):
         if self.action == "create":

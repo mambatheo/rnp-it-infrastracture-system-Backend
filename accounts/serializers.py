@@ -5,13 +5,20 @@ from .models import User
 
 
 class UserSerializer(serializers.ModelSerializer):
-    full_name = serializers.SerializerMethodField()
+    full_name  = serializers.SerializerMethodField()
+    dpu_name    = serializers.CharField(source='dpu.name',    read_only=True, default=None)
+    region_name = serializers.CharField(source='region.name', read_only=True, default=None)
+    unit_name   = serializers.CharField(source='unit.name',   read_only=True, default=None)
 
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'first_name', 'last_name', 'dpu', 'region', 'unit',
+            'id', 'email', 'first_name', 'last_name',
+            'dpu', 'dpu_name',
+            'region', 'region_name',
+            'unit', 'unit_name',
             'full_name', 'phone_number', 'role', 'is_active',
+            'is_first_login',
             'is_locked', 'locked_until', 'created_at', 'is_staff'
         ]
         read_only_fields = ['id', 'created_at', 'is_locked', 'locked_until']

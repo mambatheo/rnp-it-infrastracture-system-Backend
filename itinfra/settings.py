@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'corsheaders',
     'django_filters',
+    'django_celery_results',
     'accounts',
     'equipment',
     # 'repairs',
@@ -181,3 +182,12 @@ SPECTACULAR_SETTINGS = {
     'SERVE_PERMISSIONS': ['rest_framework.permissions.AllowAny'],
     'SERVE_AUTHENTICATION': [],
 }
+
+# Celery settings
+CELERY_BROKER_URL         = "redis://localhost:6379/0"
+CELERY_RESULT_BACKEND     = "django-db"
+CELERY_ACCEPT_CONTENT     = ["json"]
+CELERY_TASK_SERIALIZER    = "json"
+CELERY_RESULT_SERIALIZER  = "json"
+CELERY_TASK_TIME_LIMIT    = 600    
+CELERY_TASK_SOFT_TIME_LIMIT = 540  

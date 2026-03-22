@@ -112,6 +112,9 @@ class BrandSerializer(serializers.ModelSerializer):
 
 class EquipmentSerializer(serializers.ModelSerializer):
 
+    # equipment_type FK → readable name (frontend reads item.equipment_type_name)
+    equipment_type_name = serializers.CharField(source="equipment_type.name", read_only=True)
+
     # FK read-only labels
     brand_name       = serializers.CharField(source="brand.name",       read_only=True)
     status_name      = serializers.CharField(source="status.name",      read_only=True)
@@ -134,7 +137,9 @@ class EquipmentSerializer(serializers.ModelSerializer):
     class Meta:
         model  = Equipment
         fields = "__all__"
-       
+        # equipment_type_name is extra (not a model field) so we list it explicitly
+        # by using __all__ DRF will include all model fields; extra declared fields
+        # are always included automatically.
         read_only_fields = ["created_at", "updated_at"]
 
     def get_created_by_name(self, obj) -> str | None:
@@ -199,9 +204,10 @@ class StockSerializer(serializers.ModelSerializer):
 class DeploymentSerializer(serializers.ModelSerializer):
 
     # Equipment labels
-    equipment_name   = serializers.CharField(source="equipment.name",           read_only=True)
-    equipment_serial = serializers.CharField(source="equipment.serial_number",  read_only=True)
-    equipment_type   = serializers.CharField(source="equipment.equipment_type", read_only=True)
+    equipment_name   = serializers.CharField(source="equipment.name",                read_only=True)
+    equipment_serial = serializers.CharField(source="equipment.serial_number",       read_only=True)
+    # equipment_type is now a FK → EquipmentCategory; resolve to the name string
+    equipment_type   = serializers.CharField(source="equipment.equipment_type.name", read_only=True)
 
     # Org-level recipient labels
     issued_to_region_office_name = serializers.CharField(source="issued_to_region_office.name", read_only=True)
