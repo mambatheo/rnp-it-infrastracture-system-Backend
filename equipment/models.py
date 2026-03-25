@@ -283,8 +283,7 @@ class Equipment(models.Model):
 
     # ── Dates ─────────────────────────────────────────────────────────────────
 
-    deployment_date     = models.DateField(blank=True, null=True)
-    returned_date       = models.DateField(blank=True, null=True)
+    deployment_date     = models.DateField(blank=True, null=True)  
     warranty_expiration = models.DateField(blank=True, null=True)
 
     # ── Computer Specs ────────────────────────────────────────────────────────
@@ -428,14 +427,7 @@ class Equipment(models.Model):
 # ─────────────────────────────────────────
 
 class Stock(models.Model):
-
-    class Condition(models.TextChoices):
-        NEW          = "New",          _("New")
-        GOOD         = "Good",         _("Good")
-        FAIR         = "Fair",         _("Fair")
-        POOR         = "Poor",         _("Poor")
-        DAMAGED      = "Damaged",      _("Damaged")
-        UNDER_REPAIR = "Under Repair", _("Under Repair")
+  
 
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     equipment        = models.OneToOneField(Equipment, on_delete=models.PROTECT, related_name="stock")
@@ -443,9 +435,7 @@ class Stock(models.Model):
         max_length=100, blank=True, null=True,
         help_text="Logistics or IT Tech Support."
     )
-    condition        = models.CharField(
-        max_length=100, choices=Condition.choices, default=Condition.GOOD
-    )
+    
     date_added       = models.DateField(default=timezone.now, help_text="Date this item was placed into stock.")
     comments         = models.TextField(blank=True, null=True)
 
@@ -467,14 +457,13 @@ class Stock(models.Model):
 
 
 # ─────────────────────────────────────────
-# DEPLOYMENT  
+# DEPLOYMENT (Permanent assignment to a location/person)
 # ─────────────────────────────────────────
 
 class Deployment(models.Model):
 
     class DeploymentStatus(models.TextChoices):
-        ACTIVE   = "Active",   _("Active — currently out")
-        RETURNED = "Returned", _("Returned to stock")
+        ACTIVE = "Active", _("Active — currently deployed")
 
     id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     equipment = models.ForeignKey(Equipment, on_delete=models.PROTECT, related_name="deployments")
@@ -495,26 +484,18 @@ class Deployment(models.Model):
     issued_to_department   = models.ForeignKey(Department,   on_delete=models.PROTECT, null=True, blank=True, related_name="deployments")
     issued_to_office       = models.ForeignKey(Office,       on_delete=models.PROTECT, null=True, blank=True, related_name="deployments")
 
-    # ── Dates ─────────────────────────────────────────────────────────────────
+    # ── Dates ──────────────────────────────────────────────────────────────────
 
-    issued_date          = models.DateField(default=timezone.now)
-    expected_return_date = models.DateField(null=True, blank=True)
-    returned_date        = models.DateField(null=True, blank=True)
+    issued_date = models.DateField(default=timezone.now)
+    comments    = models.TextField(blank=True, null=True)
 
-    # ── Return details ────────────────────────────────────────────────────────
+    # ── Audit ──────────────────────────────────────────────────────────────────
 
-    condition_on_return = models.CharField(
-        max_length=100, choices=Stock.Condition.choices, null=True, blank=True
-    )
-    purpose  = models.CharField(max_length=1000, blank=True, null=True)
-    comments = models.TextField(blank=True, null=True)
-
-    # ── Audit ─────────────────────────────────────────────────────────────────
-
-    issued_by           = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="issued_deployments")
-    return_confirmed_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,  related_name="confirmed_returns")
-    created_at          = models.DateTimeField(auto_now_add=True)
-    updated_at          = models.DateTimeField(auto_now=True)
+    issued_by  = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="issued_deployments")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+   
+   
 
     # ── Validation ────────────────────────────────────────────────────────────
 
@@ -540,15 +521,6 @@ class Deployment(models.Model):
                 "directorate, DPU, region, or station."
             )
 
-        if self.returned_date and self.returned_date < self.issued_date:
-            errors["returned_date"] = "Return date cannot be before the issue date."
-
-        if self.expected_return_date and self.expected_return_date < self.issued_date:
-            errors["expected_return_date"] = "Expected return date cannot be before the issue date."
-
-        if self.status == self.DeploymentStatus.RETURNED and not self.returned_date:
-            errors["returned_date"] = "A return date is required when status is 'Returned'."
-
         if errors:
             raise ValidationError(errors)
 
@@ -564,17 +536,7 @@ class Deployment(models.Model):
 
         super().save(*args, **kwargs)
 
-        # Item returns → recreate Stock record
-        if self.status == self.DeploymentStatus.RETURNED and self.returned_date:
-            Stock.objects.get_or_create(
-                equipment=self.equipment,
-                defaults={
-                    "date_added": self.returned_date,
-                    "condition":  self.condition_on_return or Stock.Condition.GOOD,
-                    "added_by":   self.return_confirmed_by,
-                    "comments":   f"Returned from deployment {self.pk}",
-                }
-            )
+       
 
     class Meta:
         db_table         = "deployment"
@@ -592,3 +554,103 @@ class Deployment(models.Model):
         else:
             recipient = "Unknown"
         return f"{self.equipment} → {recipient} ({self.issued_date})"
+
+
+# ─────────────────────────────────────────
+# LENDING (Temporary loan with return tracking)
+# ─────────────────────────────────────────
+
+class Lending(models.Model):
+    class Condition(models.TextChoices):
+        NEW          = "New",          _("New")
+        GOOD         = "Good",         _("Good")
+        FAIR         = "Fair",         _("Fair")
+        POOR         = "Poor",         _("Poor")
+        DAMAGED      = "Damaged",      _("Damaged")
+        UNDER_REPAIR = "Under Repair", _("Under Repair")
+
+    class LendingStatus(models.TextChoices):
+        ACTIVE   = "Active",   _("Active — currently out")
+        RETURNED = "Returned", _("Returned to stock")
+
+    id        = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    equipment = models.ForeignKey(Equipment, on_delete=models.PROTECT, related_name="lendings")
+    status    = models.CharField(max_length=10, choices=LendingStatus.choices, default=LendingStatus.ACTIVE)
+    
+
+    # ── Borrower Info ─────────────────────────────────────────────────────────
+
+    borrower_name = models.CharField(max_length=100, help_text="Person borrowing the equipment.")
+    phone_number  = models.CharField(max_length=20, blank=True, null=True)
+    purpose       = models.TextField(help_text="Reason for borrowing.")
+
+    # ── Dates ──────────────────────────────────────────────────────────────────
+
+    issued_date   = models.DateField(default=timezone.now)
+    returned_date = models.DateField(blank=True, null=True)
+
+    # ── Return Details ───────────────────────────────────────────────────────
+
+    returned_by         = models.CharField(max_length=100, blank=True, null=True)
+   
+    condition_on_return        = models.CharField(
+        max_length=100, choices=Condition.choices, default=Condition.GOOD
+    )
+    return_comments = models.TextField(blank=True, null=True)
+
+    # ── Audit ──────────────────────────────────────────────────────────────────
+
+    issued_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="issued_lendings"
+    )
+    return_confirmed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="confirmed_lending_returns"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # ── Validation ────────────────────────────────────────────────────────────
+
+    def clean(self):
+        errors = {}
+
+        if self.returned_date and self.returned_date < self.issued_date:
+            errors["returned_date"] = "Return date cannot be before the issue date."
+
+        if self.status == self.LendingStatus.RETURNED and not self.returned_date:
+            errors["returned_date"] = "A return date is required when status is 'Returned'."
+
+        if errors:
+            raise ValidationError(errors)
+
+    def save(self, *args, **kwargs):
+        self.full_clean()
+        is_new = self._state.adding
+
+        if is_new:
+            # Item leaves stock → remove Stock record
+            Stock.objects.filter(equipment=self.equipment).delete()
+
+        super().save(*args, **kwargs)
+
+        # Item returned → recreate Stock record
+        if self.status == self.LendingStatus.RETURNED and self.returned_date:
+            Stock.objects.get_or_create(
+                equipment=self.equipment,
+                defaults={
+                    "date_added": self.returned_date,
+                    "condition":  self.condition_on_return or self.Condition.GOOD,
+                    "added_by":   self.return_confirmed_by,
+                    "comments":   f"Returned from lending {self.pk}",
+                }
+            )
+
+    class Meta:
+        db_table            = "lending"
+        ordering            = ["-issued_date"]
+        verbose_name        = _("Lending")
+        verbose_name_plural = _("Lendings")
+
+    def __str__(self):
+        return f"{self.equipment} → {self.borrower_name} ({self.issued_date})"

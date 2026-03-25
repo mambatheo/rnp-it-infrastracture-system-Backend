@@ -6,7 +6,7 @@ from .models import (
     Unit, Directorate, Department, Office,
     EquipmentCategory, Brand, EquipmentStatus,
     Equipment,
-    Stock, Deployment,
+    Stock, Deployment, Lending,
 )
 
 
@@ -76,17 +76,27 @@ class DeploymentInline(admin.TabularInline):
         "issued_to_user",
         "issued_to_region", "issued_to_dpu", "issued_to_unit",
         "issued_to_directorate", "issued_to_department", "issued_to_office",
-        "issued_date", "expected_return_date", "returned_date",
-        "condition_on_return", "issued_by",
+        "issued_date", "issued_by",
     ]
-    readonly_fields = ["issued_date", "returned_date", "issued_by"]
+    readonly_fields = ["issued_date", "issued_by"]
+    show_change_link = True
+
+
+class LendingInline(admin.TabularInline):
+    model = Lending
+    extra = 0
+    fields = [
+        "status", "borrower_name", "phone_number",
+        "issued_date", "returned_date", "condition_on_return", "issued_by",
+    ]
+    readonly_fields = ["issued_date", "issued_by"]
     show_change_link = True
 
 
 class StockInline(admin.StackedInline):
     model = Stock
     extra = 0
-    fields = ["condition", "storage_location", "date_added", "comments", "added_by"]
+    fields = ["storage_location", "date_added", "comments", "added_by"]
     readonly_fields = ["date_added", "added_by"]
     can_delete = True
     verbose_name = "Current Stock Entry"
@@ -218,7 +228,7 @@ class EquipmentAdmin(admin.ModelAdmin):
 
     list_display = [
         "name", "equipment_type",
-        "registration_intent",      
+        "registration_intent",
         "brand", "model",
         "status", "get_stock_status",
         "region", "dpu", "office",
@@ -228,7 +238,7 @@ class EquipmentAdmin(admin.ModelAdmin):
     ]
 
     list_filter = [
-        "registration_intent",      
+        "registration_intent",
         "status", "equipment_type",
         "region", "dpu", "unit",
         "brand__category", "brand",
@@ -256,7 +266,7 @@ class EquipmentAdmin(admin.ModelAdmin):
         "brand", "status",
     ]
 
-    inlines = [StockInline, DeploymentInline]
+    inlines = [StockInline, DeploymentInline, LendingInline]
 
     fieldsets = (
         (_("Identity"), {
@@ -264,7 +274,6 @@ class EquipmentAdmin(admin.ModelAdmin):
                 "id", "name", "equipment_type", "status", "get_stock_status",
             )
         }),
-       
         (_("Registration Intent"), {
             "description": (
                 " Add to Stock — item goes into the IT store immediately. "
@@ -288,7 +297,7 @@ class EquipmentAdmin(admin.ModelAdmin):
         (_("Dates"), {
             "fields": (
                 "warranty_expiration",
-                ("deployment_date", "returned_date"),
+                "deployment_date",
                 "age_since_deployed",
             )
         }),
@@ -334,8 +343,6 @@ class EquipmentAdmin(admin.ModelAdmin):
         return obj.is_in_stock
 
     def get_readonly_fields(self, request, obj=None):
-        """Lock registration_intent on the Change form (obj exists).
-        On the Add form (obj is None) it stays editable."""
         readonly = list(super().get_readonly_fields(request, obj))
         if obj:
             readonly.append("registration_intent")
@@ -353,11 +360,9 @@ class EquipmentAdmin(admin.ModelAdmin):
 class StockAdmin(admin.ModelAdmin):
 
     list_display = [
-        "equipment", "condition", "storage_location",
+        "equipment", "storage_location",
         "date_added", "added_by",
     ]
-
-    list_filter   = ["condition"]
 
     search_fields = [
         "equipment__name", "equipment__serial_number",
@@ -373,7 +378,7 @@ class StockAdmin(admin.ModelAdmin):
     fieldsets = (
         (None, {
             "fields": (
-                "equipment", "condition", "storage_location",
+                "equipment", "storage_location",
                 "date_added", "comments",
             )
         }),
@@ -402,12 +407,11 @@ class DeploymentAdmin(admin.ModelAdmin):
         "issued_to_user",
         "issued_to_region", "issued_to_dpu", "issued_to_unit",
         "issued_to_directorate", "issued_to_department", "issued_to_office",
-        "issued_date", "expected_return_date", "returned_date",
-        "condition_on_return", "issued_by",
+        "issued_date", "issued_by",
     ]
 
     list_filter = [
-        "status", "condition_on_return",
+        "status",
         "issued_to_region", "issued_to_dpu",
         "issued_to_unit", "issued_to_directorate",
         "issued_to_department", "issued_to_office",
@@ -420,7 +424,7 @@ class DeploymentAdmin(admin.ModelAdmin):
         "issued_to_region__name", "issued_to_dpu__name",
         "issued_to_unit__name", "issued_to_directorate__name",
         "issued_to_department__name", "issued_to_office__name",
-        "purpose", "comments",
+        "comments",
     ]
 
     ordering       = ["-issued_date"]
@@ -452,13 +456,76 @@ class DeploymentAdmin(admin.ModelAdmin):
         }),
         (_("Dates"), {
             "fields": (
-                ("issued_date", "expected_return_date"),
-                ("returned_date", "condition_on_return"),
+                "issued_date",
             )
         }),
         (_("Comments"), {
             "classes": ("collapse",),
             "fields": ("comments",)
+        }),
+        (_("Audit"), {
+            "classes": ("collapse",),
+            "fields": (
+                "issued_by",
+                ("created_at", "updated_at"),
+            )
+        }),
+    )
+
+    def save_model(self, request, obj, form, change):
+        if not change:
+            obj.issued_by = request.user
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(Lending)
+class LendingAdmin(admin.ModelAdmin):
+
+    list_display = [
+        "equipment", "status",
+        "borrower_name", "phone_number",
+        "issued_date", "returned_date",
+        "condition_on_return", "issued_by",
+    ]
+
+    list_filter = [
+        "status", "condition_on_return",
+    ]
+
+    search_fields = [
+        "equipment__name", "equipment__serial_number",
+        "equipment__marking_code",
+        "borrower_name", "phone_number",
+        "purpose", "return_comments",
+    ]
+
+    ordering       = ["-issued_date"]
+    date_hierarchy = "issued_date"
+
+    readonly_fields = ["id", "created_at", "updated_at"]
+
+    autocomplete_fields = ["equipment"]
+
+    fieldsets = (
+        (_("Equipment"), {
+            "fields": ("id", "equipment", "status")
+        }),
+        (_("Borrower"), {
+            "fields": (
+                ("borrower_name", "phone_number"),
+                "purpose",
+            )
+        }),
+        (_("Dates"), {
+            "fields": (
+                ("issued_date", "returned_date"),
+            )
+        }),
+        (_("Return Details"), {
+            "fields": (
+                ("returned_by", "condition_on_return"),
+                "return_comments",
+            )
         }),
         (_("Audit"), {
             "classes": ("collapse",),

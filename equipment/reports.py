@@ -96,7 +96,7 @@ PAGE_CONTENT_WIDTH  = 27.7 * cm
 _FIELD_WIDTH        = dict(zip(BASIC_FIELDS, COL_WIDTHS_CM))
 
 UNIT_FIELDS = ["S/N", "Brand", "Serial Number", "Marking Code", "Location", "Status", "Age"]
-UNIT_COL_WIDTHS_CM = [1.2*cm, 4.5*cm, 4.5*cm, 5.0*cm, 4.0*cm, 4.0*cm]
+UNIT_COL_WIDTHS_CM = [1.2*cm, 4.5*cm, 4.5*cm, 5.0*cm, 4.0*cm, 4.0*cm, 2.5*cm]
 UNIT_COL_WIDTHS_XL = [round(w / cm * _CM_TO_XL, 1) for w in UNIT_COL_WIDTHS_CM]
 _UNIT_FIELD_WIDTH  = dict(zip(UNIT_FIELDS, UNIT_COL_WIDTHS_CM))
 
@@ -310,17 +310,18 @@ def _unit_device_rows_fast(extra_filter, equipment_type):
         Equipment.objects
         .filter(equipment_type__name=equipment_type, **extra_filter)
         .values(
-            "serial_number", "marking_code", "status__name", "deployment_date",
+            "brand__name", "serial_number", "marking_code", "status__name", "deployment_date",
             "office__name", "department__name", "directorate__name", "unit__name",
             "region__name", "region__region_office__name",
             "dpu__name",    "dpu__dpu_office__name",
         )
-        .order_by("model")
+        .order_by("brand__name", "serial_number")
     )
     rows = []
     for sn, obj in enumerate(qs.iterator(chunk_size=2000), start=1):
         rows.append([
             str(sn),
+            obj["brand__name"]   or "—",
             obj["serial_number"] or "—",
             obj["marking_code"]  or "—",
             _build_location_from_dict(obj),

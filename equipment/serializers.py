@@ -4,7 +4,7 @@ from .models import (
     RegionOffice, Region, DPUOffice, DPU, Station,
     Unit, Directorate, Department, Office,
     EquipmentCategory, EquipmentStatus, Brand,
-    Equipment, Stock, Deployment,
+    Equipment, Stock, Deployment, Lending,
 )
 
 
@@ -63,8 +63,8 @@ class DirectorateSerializer(serializers.ModelSerializer):
 
 
 class DepartmentSerializer(serializers.ModelSerializer):
-    directorate_name = serializers.CharField(source="directorate.name",      read_only=True)
-    unit_name        = serializers.CharField(source="directorate.unit.name",  read_only=True)
+    directorate_name = serializers.CharField(source="directorate.name",     read_only=True)
+    unit_name        = serializers.CharField(source="directorate.unit.name", read_only=True)
 
     class Meta:
         model  = Department
@@ -112,10 +112,8 @@ class BrandSerializer(serializers.ModelSerializer):
 
 class EquipmentSerializer(serializers.ModelSerializer):
 
-    # equipment_type FK → readable name (frontend reads item.equipment_type_name)
     equipment_type_name = serializers.CharField(source="equipment_type.name", read_only=True)
 
-    # FK read-only labels
     brand_name       = serializers.CharField(source="brand.name",       read_only=True)
     status_name      = serializers.CharField(source="status.name",      read_only=True)
     region_name      = serializers.CharField(source="region.name",      read_only=True)
@@ -126,20 +124,15 @@ class EquipmentSerializer(serializers.ModelSerializer):
     department_name  = serializers.CharField(source="department.name",  read_only=True)
     office_name      = serializers.CharField(source="office.name",      read_only=True)
 
-    # Audit display
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
 
-    # Computed model properties
     age_since_deployed = serializers.ReadOnlyField()
     is_in_stock        = serializers.ReadOnlyField()
 
     class Meta:
-        model  = Equipment
-        fields = "__all__"
-        # equipment_type_name is extra (not a model field) so we list it explicitly
-        # by using __all__ DRF will include all model fields; extra declared fields
-        # are always included automatically.
+        model            = Equipment
+        fields           = "__all__"
         read_only_fields = ["created_at", "updated_at"]
 
     def get_created_by_name(self, obj) -> str | None:
@@ -149,7 +142,6 @@ class EquipmentSerializer(serializers.ModelSerializer):
         return obj.updated_by.get_full_name() if obj.updated_by else None
 
     def validate(self, data):
-        
         # On updates the intent field cannot be changed.
         if self.instance and "registration_intent" in data:
             if data["registration_intent"] != self.instance.registration_intent:
@@ -188,7 +180,7 @@ class StockSerializer(serializers.ModelSerializer):
         model  = Stock
         fields = [
             "id", "equipment", "equipment_name", "equipment_serial",
-            "condition", "storage_location",
+            "storage_location",
             "date_added", "comments",
             "added_by", "added_by_name",
             "created_at", "updated_at",
@@ -206,7 +198,6 @@ class DeploymentSerializer(serializers.ModelSerializer):
     # Equipment labels
     equipment_name   = serializers.CharField(source="equipment.name",                read_only=True)
     equipment_serial = serializers.CharField(source="equipment.serial_number",       read_only=True)
-    # equipment_type is now a FK → EquipmentCategory; resolve to the name string
     equipment_type   = serializers.CharField(source="equipment.equipment_type.name", read_only=True)
 
     # Org-level recipient labels
@@ -220,9 +211,8 @@ class DeploymentSerializer(serializers.ModelSerializer):
     issued_to_department_name    = serializers.CharField(source="issued_to_department.name",    read_only=True)
     issued_to_office_name        = serializers.CharField(source="issued_to_office.name",        read_only=True)
 
-    # Audit labels
-    issued_by_name           = serializers.SerializerMethodField()
-    return_confirmed_by_name = serializers.SerializerMethodField()
+    # Audit label
+    issued_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model  = Deployment
@@ -240,10 +230,40 @@ class DeploymentSerializer(serializers.ModelSerializer):
             "issued_to_directorate",   "issued_to_directorate_name",
             "issued_to_department",    "issued_to_department_name",
             "issued_to_office",        "issued_to_office_name",
+            # Dates & notes
+            "issued_date", "comments",
+            # Audit
+            "issued_by", "issued_by_name",
+            "created_at", "updated_at",
+        ]
+        read_only_fields = ["created_at", "updated_at"]
+
+    def get_issued_by_name(self, obj) -> str | None:
+        return obj.issued_by.get_full_name() if obj.issued_by else None
+    
+class LendingSerializer(serializers.ModelSerializer):
+
+    equipment_name         = serializers.CharField(source="equipment.name",           read_only=True)
+    equipment_serial       = serializers.CharField(source="equipment.serial_number",  read_only=True)
+    equipment_type         = serializers.CharField(source="equipment.equipment_type.name", read_only=True)
+    equipment_marking_code = serializers.CharField(source="equipment.marking_code",   read_only=True)
+    equipment_brand        = serializers.CharField(source="equipment.brand.name",     read_only=True)
+
+    issued_by_name           = serializers.SerializerMethodField()
+    return_confirmed_by_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Lending
+        fields = [
+            "id", "equipment", "equipment_name", "equipment_serial", "equipment_type",
+            "equipment_brand", "equipment_marking_code",   
+            "status",
+            # Borrower
+            "borrower_name", "phone_number", "purpose",
             # Dates
-            "issued_date", "expected_return_date",
-            "returned_date", "condition_on_return",
-            "purpose", "comments",
+            "issued_date", "returned_date",
+            # Return details
+            "returned_by", "condition_on_return", "return_comments",
             # Audit
             "issued_by",           "issued_by_name",
             "return_confirmed_by", "return_confirmed_by_name",
@@ -251,29 +271,32 @@ class DeploymentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["created_at", "updated_at"]
 
-    def validate(self, data):
-        instance = getattr(self, "instance", None)
 
-        status          = data.get("status",               getattr(instance, "status",               None))
-        returned_date   = data.get("returned_date",        getattr(instance, "returned_date",        None))
-        issued_date     = data.get("issued_date",          getattr(instance, "issued_date",          None))
-        exp_return_date = data.get("expected_return_date", getattr(instance, "expected_return_date", None))
 
-        errors = {}
 
-        if status == "Returned" and not returned_date:
-            errors["returned_date"] = "A return date is required when status is 'Returned'."
-
-        if issued_date and exp_return_date and exp_return_date < issued_date:
-            errors["expected_return_date"] = "Expected return date cannot be before the issue date."
-
-        if errors:
-            raise serializers.ValidationError(errors)
-
-        return data
 
     def get_issued_by_name(self, obj) -> str | None:
         return obj.issued_by.get_full_name() if obj.issued_by else None
 
     def get_return_confirmed_by_name(self, obj) -> str | None:
         return obj.return_confirmed_by.get_full_name() if obj.return_confirmed_by else None
+
+    def validate(self, data):
+        instance = getattr(self, "instance", None)
+
+        status        = data.get("status",        getattr(instance, "status",        None))
+        returned_date = data.get("returned_date", getattr(instance, "returned_date", None))
+        issued_date   = data.get("issued_date",   getattr(instance, "issued_date",   None))
+
+        errors = {}
+
+        if returned_date and issued_date and returned_date < issued_date:
+            errors["returned_date"] = "Return date cannot be before the issue date."
+
+        if status == Lending.LendingStatus.RETURNED and not returned_date:
+            errors["returned_date"] = "A return date is required when status is 'Returned'."
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return data

@@ -9,8 +9,8 @@ from .views import (
     UnitViewSet, DirectorateViewSet, DepartmentViewSet, OfficeViewSet,
     # Lookups
     EquipmentCategoryViewSet, EquipmentStatusViewSet, BrandViewSet,
-    # Equipment / Stock / Deployment
-    EquipmentViewSet, StockViewSet, DeploymentViewSet,
+    # Equipment / Stock / Deployment / Lendings
+    EquipmentViewSet, StockViewSet, DeploymentViewSet, LendingViewSet,
     # Reports
     EquipmentExcelReportView, EquipmentPDFReportView,
     StockExcelReportView, StockPDFReportView,
@@ -38,10 +38,11 @@ router.register(r"equipment-categories", EquipmentCategoryViewSet)
 router.register(r"equipment-statuses",   EquipmentStatusViewSet)
 router.register(r"brands",               BrandViewSet)
 
-# ── Equipment / Stock / Deployment ────────────────────
+# ── Equipment / Stock / Deployment / Lending ────────────────────
 router.register(r"equipment",   EquipmentViewSet,  basename="equipment")
 router.register(r"stock",       StockViewSet,      basename="stock")
 router.register(r"deployments", DeploymentViewSet, basename="deployments")
+router.register(r"lendings", LendingViewSet,  basename="lendings")
 
 urlpatterns = [
     # ── Aggregated counts — Reports page (replaces ~60 individual calls) ─

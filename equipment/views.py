@@ -18,7 +18,7 @@ from .models import (
     RegionOffice, Region, DPUOffice, DPU, Station,
     Unit, Directorate, Department, Office,
     EquipmentCategory, EquipmentStatus, Brand,
-    Equipment, Stock, Deployment,
+    Equipment, Stock, Deployment, Lending,
 )
 from .serializers import (
     RegionOfficeSerializer, RegionSerializer,
@@ -26,7 +26,7 @@ from .serializers import (
     StationSerializer,
     UnitSerializer, DirectorateSerializer, DepartmentSerializer, OfficeSerializer,
     EquipmentCategorySerializer, EquipmentStatusSerializer, BrandSerializer,
-    EquipmentSerializer, StockSerializer, DeploymentSerializer,
+    EquipmentSerializer, StockSerializer, DeploymentSerializer, LendingSerializer,
 )
 from .tasks import (
     task_excel_all,            task_excel_by_type,
@@ -57,7 +57,6 @@ def _location_q(user):
     """
     Build a Q filter matching equipment assigned to the user's location.
     USER / TECHNICIAN can be assigned to dpu, region, and/or unit.
-    Any match on ANY of those fields shows the equipment.
     """
     q = Q()
     if getattr(user, "dpu_id", None):
@@ -275,7 +274,8 @@ class StockViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
 
-    filterset_fields = ["condition", "equipment__equipment_type__name"]
+    # Removed "condition" — Stock model has no such field
+    filterset_fields = ["equipment__equipment_type__name"]
 
     search_fields = [
         "equipment__name", "equipment__serial_number",
@@ -321,6 +321,8 @@ class DeploymentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
 
+    # Removed returned_date / expected_return_date / condition_on_return
+    # — none of those fields exist on Deployment
     filterset_fields = {
         "status":                          ["exact"],
         "equipment":                       ["exact"],
@@ -334,9 +336,6 @@ class DeploymentViewSet(viewsets.ModelViewSet):
         "issued_to_department":            ["exact"],
         "issued_to_office":                ["exact"],
         "issued_date":                     ["exact", "gte", "lte"],
-        "returned_date":                   ["exact", "gte", "lte"],
-        "expected_return_date":            ["exact", "gte", "lte"],
-        "condition_on_return":             ["exact"],
     }
 
     search_fields = [
@@ -345,10 +344,10 @@ class DeploymentViewSet(viewsets.ModelViewSet):
         "issued_to_region__name", "issued_to_dpu__name",
         "issued_to_unit__name", "issued_to_directorate__name",
         "issued_to_department__name", "issued_to_office__name",
-        "purpose", "comments",
+        "comments",
     ]
 
-    ordering_fields = ["issued_date", "returned_date", "created_at"]
+    ordering_fields = ["issued_date", "created_at"]
     ordering        = ["-issued_date"]
 
     def get_queryset(self):
@@ -359,7 +358,7 @@ class DeploymentViewSet(viewsets.ModelViewSet):
             "issued_to_station",
             "issued_to_unit", "issued_to_directorate",
             "issued_to_department", "issued_to_office",
-            "issued_by", "return_confirmed_by",
+            "issued_by",
         )
 
         user = self.request.user
@@ -375,6 +374,60 @@ class DeploymentViewSet(viewsets.ModelViewSet):
             q |= Q(equipment__region=user.region)
         if getattr(user, "unit_id", None):
             q |= Q(issued_to_unit=user.unit)
+            q |= Q(equipment__unit=user.unit)
+        if not q:
+            return qs.none()
+        return qs.filter(q)
+
+    def perform_create(self, serializer):
+        serializer.save(issued_by=self.request.user)
+
+
+# ─────────────────────────────────────────
+# LENDING VIEWSET
+# ─────────────────────────────────────────
+
+@extend_schema(tags=["Lendings"])
+class LendingViewSet(viewsets.ModelViewSet):
+    serializer_class   = LendingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+
+    filterset_fields = {
+        "status":                          ["exact"],
+        "equipment":                       ["exact"],
+        "equipment__equipment_type__name": ["exact"],
+        "condition_on_return":             ["exact"],
+        "issued_date":                     ["exact", "gte", "lte"],
+        "returned_date":                   ["exact", "gte", "lte"],
+    }
+
+    search_fields = [
+        "equipment__name", "equipment__serial_number", "equipment__marking_code",
+        "borrower_name", "phone_number",
+        "purpose", "return_comments",
+    ]
+
+    ordering_fields = ["issued_date", "returned_date", "created_at"]
+    ordering        = ["-issued_date"]
+
+    def get_queryset(self):
+        qs = Lending.objects.select_related(
+            "equipment__brand", "equipment__status", "equipment__equipment_type",
+            "equipment__region", "equipment__dpu", "equipment__unit",
+            "issued_by", "return_confirmed_by",
+        )
+
+        user = self.request.user
+        if _is_privileged(user):
+            return qs
+
+        q = Q()
+        if getattr(user, "dpu_id", None):
+            q |= Q(equipment__dpu=user.dpu)
+        if getattr(user, "region_id", None):
+            q |= Q(equipment__region=user.region)
+        if getattr(user, "unit_id", None):
             q |= Q(equipment__unit=user.unit)
         if not q:
             return qs.none()
@@ -420,21 +473,11 @@ PDF_CT  = "application/pdf"
 
 
 def _enqueue(task_fn, *args):
-    """
-    Dispatch a Celery task and immediately return HTTP 202 with the task_id.
-    The frontend polls with ?task_id=<id> until the file is ready.
-    """
     result = task_fn.delay(*args)
     return Response({"task_id": result.id, "status": "PENDING"}, status=202)
 
 
 def _poll_or_download(request, task_id, filename, content_type):
-    """
-    Called when the frontend polls with ?task_id=<id>.
-    - PENDING / STARTED / RETRY  → 202 so the frontend keeps polling
-    - SUCCESS                    → stream the file and forget the result
-    - FAILURE                    → 500 with error detail
-    """
     result = AsyncResult(task_id)
 
     if result.state in ("PENDING", "STARTED", "RETRY"):
@@ -446,11 +489,10 @@ def _poll_or_download(request, task_id, filename, content_type):
             status=500,
         )
 
-    # SUCCESS — base64 → bytes → HTTP file response
     raw  = base64.b64decode(result.result)
     resp = HttpResponse(raw, content_type=content_type)
     resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-    result.forget()   # remove from result backend to free space
+    result.forget()
     return resp
 
 
@@ -459,9 +501,9 @@ def _poll_or_download(request, task_id, filename, content_type):
 @extend_schema(tags=["Reports"])
 class EquipmentExcelReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
-        slug    = (equipment_type or "all").replace(" ", "_").lower()
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
+        slug     = (equipment_type or "all").replace(" ", "_").lower()
         filename = f"equipment_{slug}_{today}.xlsx"
 
         if task_id:
@@ -474,9 +516,9 @@ class EquipmentExcelReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class EquipmentPDFReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
-        slug    = (equipment_type or "all").replace(" ", "_").lower()
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
+        slug     = (equipment_type or "all").replace(" ", "_").lower()
         filename = f"equipment_{slug}_{today}.pdf"
 
         if task_id:
@@ -491,9 +533,9 @@ class EquipmentPDFReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class StockExcelReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
-        slug    = (equipment_type or "all").replace(" ", "_").lower()
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
+        slug     = (equipment_type or "all").replace(" ", "_").lower()
         filename = f"stock_{slug}_{today}.xlsx"
 
         if task_id:
@@ -506,9 +548,9 @@ class StockExcelReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class StockPDFReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
-        slug    = (equipment_type or "all").replace(" ", "_").lower()
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
+        slug     = (equipment_type or "all").replace(" ", "_").lower()
         filename = f"stock_{slug}_{today}.pdf"
 
         if task_id:
@@ -523,8 +565,8 @@ class StockPDFReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class UnitExcelReportView(_ReportBaseView):
     def get(self, request, unit_id=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
         filename = f"unit_{unit_id or 'all'}_{today}.xlsx"
 
         if task_id:
@@ -537,8 +579,8 @@ class UnitExcelReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class UnitPDFReportView(_ReportBaseView):
     def get(self, request, unit_id=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
         filename = f"unit_{unit_id or 'all'}_{today}.pdf"
 
         if task_id:
@@ -553,8 +595,8 @@ class UnitPDFReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class RegionExcelReportView(_ReportBaseView):
     def get(self, request, region_id=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
         filename = f"region_{region_id or 'all'}_{today}.xlsx"
 
         if task_id:
@@ -567,8 +609,8 @@ class RegionExcelReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class RegionPDFReportView(_ReportBaseView):
     def get(self, request, region_id=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
         filename = f"region_{region_id or 'all'}_{today}.pdf"
 
         if task_id:
@@ -583,8 +625,8 @@ class RegionPDFReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class DPUExcelReportView(_ReportBaseView):
     def get(self, request, dpu_id=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
         filename = f"dpu_{dpu_id or 'all'}_{today}.xlsx"
 
         if task_id:
@@ -597,8 +639,8 @@ class DPUExcelReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class DPUPDFReportView(_ReportBaseView):
     def get(self, request, dpu_id=None):
-        today   = timezone.now().strftime("%Y%m%d")
-        task_id = request.query_params.get("task_id")
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
         filename = f"dpu_{dpu_id or 'all'}_{today}.pdf"
 
         if task_id:
@@ -614,12 +656,7 @@ class DPUPDFReportView(_ReportBaseView):
 
 @extend_schema(tags=["Reports"])
 class ReportCountsView(APIView):
-    """
-    Single aggregated endpoint for the Reports page.
-    Replaces ~60-80 individual API calls with 1 request.
-
-    GET /api/v1/equipment/reports/counts/
-    """
+  
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -697,6 +734,8 @@ class ReportCountsView(APIView):
             "stock":              Stock.objects.count(),
             "deployments":        Deployment.objects.count(),
             "active_deployments": Deployment.objects.filter(status="Active").count(),
+            "lendings":           Lending.objects.count(),
+            "active_lendings":    Lending.objects.filter(status=Lending.LendingStatus.ACTIVE).count(),
             "unassigned":         Equipment.objects.filter(
                                       ~Exists(_in_stock),
                                       ~Exists(_active_deploy),
