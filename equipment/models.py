@@ -467,7 +467,7 @@ class Stock(models.Model):
 
 
 # ─────────────────────────────────────────
-# DEPLOYMENT  (LENDING / RETURN)
+# DEPLOYMENT  
 # ─────────────────────────────────────────
 
 class Deployment(models.Model):

@@ -171,17 +171,62 @@ class AuthViewSet(viewsets.ViewSet):
     # ── Refresh ───────────────────────────────────────────────────────────────
 
     @extend_schema(exclude=True)                     
-    @action(detail=False, methods=["post"], permission_classes=[permissions.IsAuthenticated])
+    @action(detail=False, methods=["post"], permission_classes=[permissions.AllowAny])
     def refresh(self, request):
-        user    = request.user
-        refresh = RefreshToken.for_user(user)
-        is_first_login = False if (user.role == User.ADMIN or user.is_superuser) else user.is_first_login
-        return Response({
-            "access":         str(refresh.access_token),
-            "refresh":        str(refresh),
-            "is_first_login": is_first_login,
-            "user":           UserSerializer(user).data,
-        })
+        """
+        Refresh access token using a valid refresh token.
+        Does NOT require authentication - uses the refresh token itself.
+        """
+        refresh_token = request.data.get("refresh")
+        
+        if not refresh_token:
+            return Response(
+                {"error": "Refresh token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        
+        try:
+            # Validate the refresh token and get user
+            old_refresh = RefreshToken(refresh_token)
+            user_id = old_refresh.payload.get('user_id')
+            user = User.objects.get(id=user_id)
+            
+            # Check user is still active
+            if not user.is_active:
+                return Response(
+                    {"error": "Account has been deactivated."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            if user.is_locked:
+                return Response(
+                    {"error": "Account is locked."},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+            
+            # Blacklist old refresh token (rotation enabled)
+            old_refresh.blacklist()
+            
+            # Generate new tokens
+            new_refresh = RefreshToken.for_user(user)
+            is_first_login = False if (user.role == User.ADMIN or user.is_superuser) else user.is_first_login
+            
+            return Response({
+                "access":         str(new_refresh.access_token),
+                "refresh":        str(new_refresh),
+                "is_first_login": is_first_login,
+                "user":           UserSerializer(user).data,
+            })
+            
+        except TokenError as e:
+            return Response(
+                {"error": "Invalid or expired refresh token."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+        except User.DoesNotExist:
+            return Response(
+                {"error": "User not found."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
     # ── Logout ────────────────────────────────────────────────────────────────
 

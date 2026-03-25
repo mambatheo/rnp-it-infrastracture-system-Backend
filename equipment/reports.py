@@ -17,7 +17,7 @@ from reportlab.platypus import (
 )
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from .models import Equipment, EquipmentCategory, EquipmentStatus, Stock, Unit, Region, DPU
+from .models import Equipment, EquipmentCategory, EquipmentStatus, Stock, Unit, Region, DPU, Department, Directorate
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -56,7 +56,6 @@ def get_equipment_types():
 
 # ─────────────────────────────────────────
 # SHEET NAME SANITISER
-# Excel tab names cannot contain: / \ ? * [ ] :  and must be ≤ 31 chars.
 # ─────────────────────────────────────────
 
 def _safe_sheet_name(name):
@@ -96,7 +95,7 @@ BASIC_COL_WIDTHS_XL = [round(w / cm * _CM_TO_XL, 1) for w in COL_WIDTHS_CM]
 PAGE_CONTENT_WIDTH  = 27.7 * cm
 _FIELD_WIDTH        = dict(zip(BASIC_FIELDS, COL_WIDTHS_CM))
 
-UNIT_FIELDS = ["S/N", "Serial Number", "Marking Code", "Location", "Status", "Age"]
+UNIT_FIELDS = ["S/N", "Brand", "Serial Number", "Marking Code", "Location", "Status", "Age"]
 UNIT_COL_WIDTHS_CM = [1.2*cm, 4.5*cm, 4.5*cm, 5.0*cm, 4.0*cm, 4.0*cm]
 UNIT_COL_WIDTHS_XL = [round(w / cm * _CM_TO_XL, 1) for w in UNIT_COL_WIDTHS_CM]
 _UNIT_FIELD_WIDTH  = dict(zip(UNIT_FIELDS, UNIT_COL_WIDTHS_CM))
@@ -133,10 +132,25 @@ _TYPE_LABELS = {
 # ─────────────────────────────────────────
 
 def _filter_empty_cols(headers, rows, widths=None):
+    """Filter out columns that are entirely empty. Optimized with early termination."""
     if not rows:
         return headers, rows, widths
-    keep      = [i for i in range(len(headers))
-                 if any(str(row[i]).strip() not in ("—", "-", "") for row in rows)]
+    
+    n_cols = len(headers)
+    # Track which columns have non-empty values
+    has_data = [False] * n_cols
+    cols_remaining = n_cols
+    
+    for row in rows:
+        for i in range(n_cols):
+            if not has_data[i] and str(row[i]).strip() not in ("—", "-", ""):
+                has_data[i] = True
+                cols_remaining -= 1
+                if cols_remaining == 0:
+                    # All columns have data, return early
+                    return headers, rows, widths
+    
+    keep      = [i for i in range(n_cols) if has_data[i]]
     f_headers = [headers[i] for i in keep]
     f_rows    = [[row[i] for i in keep] for row in rows]
     f_widths  = [widths[i] for i in keep] if widths else None
@@ -154,6 +168,10 @@ def _scale_to_page(widths, page_width=PAGE_CONTENT_WIDTH):
 def _build_location_from_dict(obj):
     if obj["office__name"]:
         return obj["office__name"]
+    if obj["department__name"]:
+        return obj["department__name"]
+    if obj["directorate__name"]:
+        return obj["directorate__name"]
     if obj["unit__name"]:
         return obj["unit__name"]
     if obj["dpu__name"]:
@@ -169,10 +187,12 @@ def _build_location_from_dict(obj):
     return "—"
 
 
-def _age_from_date(deployment_date):
+def _age_from_date(deployment_date, today=None):
     if not deployment_date:
         return "—"
-    total_days       = (timezone.now().date() - deployment_date).days
+    if today is None:
+        today = timezone.now().date()
+    total_days       = (today - deployment_date).days
     years, remainder = divmod(total_days, 365)
     months, days     = divmod(remainder, 30)
     parts = []
@@ -183,7 +203,7 @@ def _age_from_date(deployment_date):
 
 
 # ─────────────────────────────────────────
-# DATA HELPERS  (values() based — fast)
+# DATA HELPERS
 # ─────────────────────────────────────────
 
 def get_summary():
@@ -220,9 +240,10 @@ def _equipment_values_qs(equipment_type=None, extra_filter=None):
         Equipment.objects
         .filter(equipment_type__isnull=False)
         .values(
+            "equipment_type__name",
             "brand__name", "model", "serial_number", "marking_code",
             "status__name", "deployment_date",
-            "office__name", "unit__name",
+            "office__name", "department__name", "directorate__name", "unit__name",
             "region__name", "region__region_office__name",
             "dpu__name",    "dpu__dpu_office__name",
         )
@@ -236,8 +257,9 @@ def _equipment_values_qs(equipment_type=None, extra_filter=None):
 
 
 def get_basic_rows(equipment_type=None, extra_filter=None):
-    qs   = _equipment_values_qs(equipment_type=equipment_type, extra_filter=extra_filter)
-    rows = []
+    qs    = _equipment_values_qs(equipment_type=equipment_type, extra_filter=extra_filter)
+    today = timezone.now().date()
+    rows  = []
     for sn, obj in enumerate(qs.iterator(chunk_size=2000), start=1):
         rows.append([
             str(sn),
@@ -247,9 +269,40 @@ def get_basic_rows(equipment_type=None, extra_filter=None):
             obj["marking_code"]  or "—",
             _build_location_from_dict(obj),
             obj["status__name"]  or "—",
-            _age_from_date(obj["deployment_date"]),
+            _age_from_date(obj["deployment_date"], today),
         ])
     return rows
+
+
+def get_all_basic_rows_grouped():
+    """Fetch all equipment in ONE query and group by equipment_type.
+    Returns dict: {equipment_type: [[row1], [row2], ...]}
+    """
+    qs    = _equipment_values_qs()
+    today = timezone.now().date()
+    
+    grouped = {}
+    counters = {}
+    
+    for obj in qs.iterator(chunk_size=2000):
+        eq_type = obj["equipment_type__name"]
+        if eq_type not in grouped:
+            grouped[eq_type] = []
+            counters[eq_type] = 0
+        
+        counters[eq_type] += 1
+        grouped[eq_type].append([
+            str(counters[eq_type]),
+            obj["brand__name"]   or "—",
+            obj["model"]         or "—",
+            obj["serial_number"] or "—",
+            obj["marking_code"]  or "—",
+            _build_location_from_dict(obj),
+            obj["status__name"]  or "—",
+            _age_from_date(obj["deployment_date"], today),
+        ])
+    
+    return grouped
 
 
 def _unit_device_rows_fast(extra_filter, equipment_type):
@@ -258,7 +311,7 @@ def _unit_device_rows_fast(extra_filter, equipment_type):
         .filter(equipment_type__name=equipment_type, **extra_filter)
         .values(
             "serial_number", "marking_code", "status__name", "deployment_date",
-            "office__name", "unit__name",
+            "office__name", "department__name", "directorate__name", "unit__name",
             "region__name", "region__region_office__name",
             "dpu__name",    "dpu__dpu_office__name",
         )
@@ -344,7 +397,7 @@ def _xl_write_header(ws, fmt, report_title, n_cols):
     ws.merge_range(0, title_col, 0, n_cols - 1, SYSTEM_NAME,     fmt["sys_name"])
     ws.merge_range(1, title_col, 1, n_cols - 1, report_title,    fmt["report_title"])
     ws.merge_range(2, title_col, 2, n_cols - 1,
-        f"Generated: {timezone.now().strftime('%d %B %Y, %H:%M')}", fmt["date_line"])
+        f"Generated: {timezone.now().strftime('%d %B %Y')}", fmt["date_line"])
     return 4
 
 
@@ -370,11 +423,13 @@ def _close_workbook(wb, output):
 
 
 # ─────────────────────────────────────────
-# XLSXWRITER SHEET WRITERS
+# XLSXWRITER SHEET WRITERS  (unchanged)
 # ─────────────────────────────────────────
 
-def _write_equipment_sheet(wb, fmt, sheet_title, equipment_type=None, extra_filter=None):
-    rows = get_basic_rows(equipment_type=equipment_type, extra_filter=extra_filter)
+def _write_equipment_sheet(wb, fmt, sheet_title, equipment_type=None, extra_filter=None, rows=None):
+    """Write equipment sheet. If rows is provided, use it; otherwise fetch from DB."""
+    if rows is None:
+        rows = get_basic_rows(equipment_type=equipment_type, extra_filter=extra_filter)
     headers, rows, col_widths_xl = _filter_empty_cols(
         BASIC_FIELDS, rows, widths=BASIC_COL_WIDTHS_XL,
     )
@@ -578,44 +633,52 @@ def _write_equipment_summary_sheet(wb, fmt, summary):
         ws.write(row, col_idx, "", fmt["grand"])
 
 
-# ─────────────────────────────────────────
-# PDF HELPERS  (ReportLab — unchanged)
-# ─────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════
+#  PDF STYLES  — font size 11 throughout, tight padding
+# ═══════════════════════════════════════════════════════════════════
 
 _PDF_STYLES = getSampleStyleSheet()
 
+# ── table cell styles ──────────────────────────────────────────────
 _CELL_STYLE = ParagraphStyle(
-    "CellNormal", fontName=_PDF_FONT, fontSize=11,
+    "CellNormal",
+    fontName=_PDF_FONT, fontSize=11,
     leading=13, wordWrap="LTR", alignment=1,
 )
 _HEADER_CELL_STYLE = ParagraphStyle(
-    "CellHeader", fontName=_PDF_FONT_BOLD, fontSize=11,
-    leading=13, wordWrap="LTR", textColor=colors.white, alignment=1,
+    "CellHeader",
+    fontName=_PDF_FONT_BOLD, fontSize=11,
+    leading=13, wordWrap="LTR",
+    textColor=colors.white, alignment=1,
 )
+
+# ── header block styles ────────────────────────────────────────────
 _STYLE_PDF_SYSTEM = ParagraphStyle(
     "PDFSystemName", parent=_PDF_STYLES["Normal"],
-    fontSize=14, fontName=_PDF_FONT_BOLD, textColor=PDF_DARK, alignment=2,
+    fontSize=11, fontName=_PDF_FONT_BOLD,
+    textColor=PDF_DARK, alignment=0,          
+    spaceBefore=2, spaceAfter=0,
 )
 _STYLE_PDF_REPORT = ParagraphStyle(
     "PDFReportTitle", parent=_PDF_STYLES["Normal"],
-    fontSize=12, fontName=_PDF_FONT,
-    textColor=colors.HexColor("#444444"), alignment=2,
+    fontSize=11, fontName=_PDF_FONT,
+    textColor=colors.HexColor("#444444"), alignment=0,
+    spaceBefore=1, spaceAfter=0,
 )
-_STYLE_PDF_DATE = ParagraphStyle(
-    "PDFDate", parent=_PDF_STYLES["Normal"],
-    fontSize=10, fontName=_PDF_FONT, textColor=colors.grey, alignment=2,
-)
+
+# ── section / heading styles ───────────────────────────────────────
 _STYLE_PDF_HEADING = ParagraphStyle(
     "PDFHeading", parent=_PDF_STYLES["Heading2"],
     textColor=PDF_DARK, fontName=_PDF_FONT_BOLD,
+    fontSize=11, spaceBefore=4, spaceAfter=2,
 )
 _STYLE_PDF_SMALL = ParagraphStyle(
     "PDFSmall", parent=_PDF_STYLES["Normal"],
-    fontSize=10, fontName=_PDF_FONT, textColor=colors.grey,
+    fontSize=9, fontName=_PDF_FONT, textColor=colors.grey,
 )
 _STYLE_SEC_HEAD = ParagraphStyle(
     "PDFSecHead", parent=_PDF_STYLES["Normal"],
-    fontSize=12, fontName=_PDF_FONT_BOLD, textColor=colors.white,
+    fontSize=11, fontName=_PDF_FONT_BOLD, textColor=colors.white,
     backColor=colors.HexColor("#2E4DA0"),
     spaceAfter=0, spaceBefore=4, leftIndent=4,
 )
@@ -632,6 +695,7 @@ _STYLE_DPU_HEAD = ParagraphStyle(
     textColor=colors.HexColor("#003580"), fontSize=11, fontName=_PDF_FONT_BOLD,
 )
 
+# ── base table style ───────────────────────────────────────────────
 TABLE_STYLE = TableStyle([
     ("BACKGROUND",    (0, 0),  (-1, 0),  PDF_DARK),
     ("TEXTCOLOR",     (0, 0),  (-1, 0),  colors.white),
@@ -642,44 +706,96 @@ TABLE_STYLE = TableStyle([
     ("VALIGN",        (0, 0),  (-1, -1), "MIDDLE"),
     ("ROWBACKGROUNDS",(0, 1),  (-1, -1), [colors.white, PDF_ALT]),
     ("GRID",          (0, 0),  (-1, -1), 0.4, PDF_GREY),
-    ("ROWHEIGHT",     (0, 0),  (-1, -1), 18),
-    ("TOPPADDING",    (0, 0),  (-1, -1), 4),
-    ("BOTTOMPADDING", (0, 0),  (-1, -1), 4),
+    # ── tighter row height & padding ──────────────────────────────
+    ("ROWHEIGHT",     (0, 0),  (-1, -1), 16),
+    ("TOPPADDING",    (0, 0),  (-1, -1), 2),
+    ("BOTTOMPADDING", (0, 0),  (-1, -1), 2),
+    ("LEFTPADDING",   (0, 0),  (-1, -1), 3),
+    ("RIGHTPADDING",  (0, 0),  (-1, -1), 3),
 ])
 
 
+# ─────────────────────────────────────────
+# PDF HELPERS
+# ─────────────────────────────────────────
+
+# Threshold for using Paragraph (expensive) vs plain string (fast)
+_WRAP_THRESHOLD = 25
+
 def _wrap_rows(header_row, data_rows):
+    """Wrap cells for PDF table. Uses plain strings for short text to improve performance."""
     wrapped_header = [Paragraph(str(h), _HEADER_CELL_STYLE) for h in header_row]
-    wrapped_data   = [
-        [Paragraph(str(cell), _CELL_STYLE) for cell in row]
-        for row in data_rows
-    ]
+    wrapped_data   = []
+    for row in data_rows:
+        wrapped_row = []
+        for cell in row:
+            cell_str = str(cell)
+            # Only use Paragraph for longer text that might need wrapping
+            if len(cell_str) > _WRAP_THRESHOLD:
+                wrapped_row.append(Paragraph(cell_str, _CELL_STYLE))
+            else:
+                wrapped_row.append(cell_str)
+        wrapped_data.append(wrapped_row)
     return wrapped_header, wrapped_data
 
 
+
+def _make_footer_canvas(report_title):
+  
+    from reportlab.pdfgen import canvas as _canvas_mod
+
+    generated_str = f"Generated: {timezone.now().strftime('%d %B %Y at %H:%M')}"
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setFont(_PDF_FONT, 8)
+        canvas.setFillColor(colors.grey)
+        # Bottom-right: x = page width − right margin, y = bottom margin / 2
+        x = doc.pagesize[0] - doc.rightMargin
+        y = doc.bottomMargin * 0.5
+        canvas.drawRightString(x, y, generated_str)
+        canvas.restoreState()
+
+    return _draw_footer
+
+
 def _pdf_header(report_title):
-    logo_cell = (
-        RLImage(LOGO_PATH, width=2.5*cm, height=2.5*cm)
-        if os.path.exists(LOGO_PATH)
-        else Paragraph("[ Logo ]", _PDF_STYLES["Normal"])
+   
+    # ── left cell: logo (if present) + system name below it ──────
+    left_items = []
+    if os.path.exists(LOGO_PATH):
+        left_items.append(RLImage(LOGO_PATH, width=1.8*cm, height=1.8*cm))
+        left_items.append(Spacer(1, 0.1*cm))
+    left_items.append(Paragraph(SYSTEM_NAME or "", _STYLE_PDF_SYSTEM))
+
+    # ── right cell: report title ──────────────────────────────────
+    _STYLE_REPORT_RIGHT = ParagraphStyle(
+        "PDFReportRight", parent=_PDF_STYLES["Normal"],
+        fontSize=11, fontName=_PDF_FONT_BOLD,
+        textColor=PDF_ACCENT, alignment=1,   # centred
     )
-    right_content = [
-        Paragraph(SYSTEM_NAME, _STYLE_PDF_SYSTEM),
-        Spacer(1, 0.1*cm),
-        Paragraph(report_title, _STYLE_PDF_REPORT),
-        Spacer(1, 0.1*cm),
-        Paragraph(f"Generated: {timezone.now().strftime('%d %B %Y at %H:%M')}", _STYLE_PDF_DATE),
-    ]
-    header_table = Table([[logo_cell, right_content]], colWidths=[4*cm, None], hAlign="LEFT")
+    right_items = [Paragraph(report_title, _STYLE_REPORT_RIGHT)]
+
+    header_table = Table(
+        [[left_items, right_items]],
+        colWidths=[4*cm, PAGE_CONTENT_WIDTH - 4*cm],
+        hAlign="LEFT",
+    )
     header_table.setStyle(TableStyle([
         ("VALIGN",       (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN",        (0, 0), (0, 0),   "LEFT"),
-        ("ALIGN",        (1, 0), (1, 0),   "RIGHT"),
+        ("ALIGN",        (1, 0), (1, 0),   "CENTER"),
         ("LEFTPADDING",  (0, 0), (-1, -1), 0),
         ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING",   (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 0),
     ]))
     return header_table
 
+
+# ─────────────────────────────────────────
+# PDF SUMMARY TABLE
+# ─────────────────────────────────────────
 
 def _pdf_summary_table(summary):
     headers = ["Equipment Type","Total","Active","Inactive","Under Repair","Retired","Damaged","New"]
@@ -700,7 +816,7 @@ def _pdf_summary_table(summary):
         ("TEXTCOLOR",     (0, 0),  (-1, 0),  colors.white),
         ("FONTNAME",      (0, 0),  (-1, 0),  _PDF_FONT_BOLD),
         ("FONTNAME",      (0, 1),  (-1, -1), _PDF_FONT),
-        ("FONTSIZE",      (0, 0),  (-1, -1), 12),
+        ("FONTSIZE",      (0, 0),  (-1, -1), 11),
         ("ALIGN",         (0, 0),  (-1, -1), "CENTER"),
         ("VALIGN",        (0, 0),  (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS",(0, 1),  (-1, -2), [colors.white, PDF_ALT]),
@@ -708,23 +824,27 @@ def _pdf_summary_table(summary):
         ("TEXTCOLOR",     (0, -1), (-1, -1), colors.white),
         ("FONTNAME",      (0, -1), (-1, -1), _PDF_FONT_BOLD),
         ("GRID",          (0, 0),  (-1, -1), 0.5, PDF_GREY),
-        ("ROWHEIGHT",     (0, 0),  (-1, -1), 20),
-        ("TOPPADDING",    (0, 0),  (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0),  (-1, -1), 4),
+        ("ROWHEIGHT",     (0, 0),  (-1, -1), 16),
+        ("TOPPADDING",    (0, 0),  (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0),  (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0),  (-1, -1), 3),
+        ("RIGHTPADDING",  (0, 0),  (-1, -1), 3),
     ]))
     return t
 
 
-def _pdf_equipment_section(equipment_type):
+def _pdf_equipment_section(equipment_type, rows=None):
+    """Generate PDF section for equipment type. If rows provided, use it; otherwise fetch from DB."""
     elements = [
         HRFlowable(width="100%", thickness=1, color=PDF_GREY),
-        Spacer(1, 0.3*cm),
+        Spacer(1, 0.2*cm),
         Paragraph(equipment_type, _STYLE_PDF_HEADING),
     ]
-    rows = get_basic_rows(equipment_type=equipment_type)
+    if rows is None:
+        rows = get_basic_rows(equipment_type=equipment_type)
     if not rows:
         elements.append(Paragraph("No data available.", _STYLE_PDF_SMALL))
-        elements.append(Spacer(1, 0.4*cm))
+        elements.append(Spacer(1, 0.3*cm))
         return elements
     headers, rows, col_widths = _filter_empty_cols(
         BASIC_FIELDS, rows, widths=[_FIELD_WIDTH[h] for h in BASIC_FIELDS],
@@ -734,21 +854,31 @@ def _pdf_equipment_section(equipment_type):
               colWidths=_scale_to_page(col_widths))
     t.setStyle(TABLE_STYLE)
     elements.append(t)
-    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Spacer(1, 0.3*cm))
     return elements
 
 
-def _build_pdf(elements):
-    output = io.BytesIO()
-    doc    = SimpleDocTemplate(
+# ─────────────────────────────────────────
+# BUILD PDF  — now wires up the footer callback
+# ─────────────────────────────────────────
+
+def _build_pdf(elements, report_title=""):
+    output   = io.BytesIO()
+    footer_cb = _make_footer_canvas(report_title)
+    doc = SimpleDocTemplate(
         output, pagesize=landscape(A4),
         rightMargin=1*cm, leftMargin=1*cm,
-        topMargin=1.5*cm, bottomMargin=1.5*cm,
+        # ── reduced top / bottom margins ──────────────────────────
+        topMargin=0.2*cm, bottomMargin=0.2*cm,
     )
-    doc.build(elements)
+    doc.build(elements, onFirstPage=footer_cb, onLaterPages=footer_cb)
     output.seek(0)
     return output
 
+
+# ─────────────────────────────────────────
+# PDF UNIT / REGION / DPU SECTION
+# ─────────────────────────────────────────
 
 def _pdf_unit_section(eq_type, section_num, extra_filter):
     label = f"{section_num}. {_TYPE_LABELS.get(eq_type, eq_type.upper())}"
@@ -765,7 +895,7 @@ def _pdf_unit_section(eq_type, section_num, extra_filter):
     )
     t.setStyle(TABLE_STYLE)
     elements.append(t)
-    elements.append(Spacer(1, 0.4*cm))
+    elements.append(Spacer(1, 0.3*cm))
     return elements
 
 
@@ -774,12 +904,17 @@ def _pdf_unit_section(eq_type, section_num, extra_filter):
 # ═════════════════════════════════════════════════════════════════
 
 def generate_excel_all():
+    """Generate Excel report for all equipment types using a single batched query."""
     output, wb, fmt = _new_workbook()
     summary  = get_summary()
-    eq_types = list(get_equipment_types())
+    
+    # Fetch all data in ONE query, grouped by equipment type
+    all_rows_grouped = get_all_basic_rows_grouped()
+    eq_types = sorted(all_rows_grouped.keys())
+    
     _write_equipment_summary_sheet(wb, fmt, summary)
     for eq_type in eq_types:
-        _write_equipment_sheet(wb, fmt, eq_type, equipment_type=eq_type)
+        _write_equipment_sheet(wb, fmt, eq_type, rows=all_rows_grouped.get(eq_type, []))
     return _close_workbook(wb, output)
 
 
@@ -794,30 +929,37 @@ def generate_excel_by_type(equipment_type):
 # ═════════════════════════════════════════════════════════════════
 
 def generate_pdf_all():
+    """Generate PDF report for all equipment types using a single batched query."""
+    title    = "Full Equipment Report"
     elements = [
-        _pdf_header("Full Equipment Report"),
-        Spacer(1, 0.3*cm),
-        HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
-        Spacer(1, 0.5*cm),
-        Paragraph("Summary", _STYLE_PDF_HEADING),
+        _pdf_header(title),
         Spacer(1, 0.2*cm),
+        HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
+        Spacer(1, 0.3*cm),
+        Paragraph("Summary", _STYLE_PDF_HEADING),
+        Spacer(1, 0.1*cm),
         _pdf_summary_table(get_summary()),
-        Spacer(1, 0.8*cm),
+        Spacer(1, 0.5*cm),
     ]
-    for eq_type in get_equipment_types():
-        elements.extend(_pdf_equipment_section(eq_type))
-    return _build_pdf(elements)
+    
+    # Fetch all data in ONE query, grouped by equipment type
+    all_rows_grouped = get_all_basic_rows_grouped()
+    for eq_type in sorted(all_rows_grouped.keys()):
+        elements.extend(_pdf_equipment_section(eq_type, rows=all_rows_grouped[eq_type]))
+    
+    return _build_pdf(elements, title)
 
 
 def generate_pdf_by_type(equipment_type):
+    title    = f"{equipment_type} Report"
     elements = [
-        _pdf_header(f"{equipment_type} Report"),
-        Spacer(1, 0.3*cm),
+        _pdf_header(title),
+        Spacer(1, 0.2*cm),
         HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
-        Spacer(1, 0.5*cm),
+        Spacer(1, 0.3*cm),
     ]
     elements.extend(_pdf_equipment_section(equipment_type))
-    return _build_pdf(elements)
+    return _build_pdf(elements, title)
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -857,7 +999,7 @@ def generate_stock_excel_by_type(equipment_type):
 def _pdf_stock_section(equipment_type):
     elements = [
         HRFlowable(width="100%", thickness=1, color=PDF_GREY),
-        Spacer(1, 0.3*cm),
+        Spacer(1, 0.2*cm),
         Paragraph(equipment_type, _STYLE_PDF_HEADING),
     ]
     qs = (
@@ -884,7 +1026,7 @@ def _pdf_stock_section(equipment_type):
         ])
     if not rows:
         elements.append(Paragraph("No stock items available.", _STYLE_PDF_SMALL))
-        elements.append(Spacer(1, 0.4*cm))
+        elements.append(Spacer(1, 0.3*cm))
         return elements
     stock_widths = [_STOCK_FIELD_WIDTH[h] for h in STOCK_FIELDS]
     headers, rows, col_widths = _filter_empty_cols(STOCK_FIELDS, rows, widths=stock_widths)
@@ -893,7 +1035,7 @@ def _pdf_stock_section(equipment_type):
               colWidths=_scale_to_page(col_widths))
     t.setStyle(TABLE_STYLE)
     elements.append(t)
-    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Spacer(1, 0.3*cm))
     return elements
 
 
@@ -921,7 +1063,7 @@ def generate_stock_pdf_all():
         ("TEXTCOLOR",     (0, 0),  (-1, 0),  colors.white),
         ("FONTNAME",      (0, 0),  (-1, 0),  _PDF_FONT_BOLD),
         ("FONTNAME",      (0, 1),  (-1, -1), _PDF_FONT),
-        ("FONTSIZE",      (0, 0),  (-1, -1), 12),
+        ("FONTSIZE",      (0, 0),  (-1, -1), 11),
         ("ALIGN",         (0, 0),  (-1, -1), "CENTER"),
         ("VALIGN",        (0, 0),  (-1, -1), "MIDDLE"),
         ("ROWBACKGROUNDS",(0, 1),  (-1, -2), [colors.white, PDF_ALT]),
@@ -929,34 +1071,38 @@ def generate_stock_pdf_all():
         ("TEXTCOLOR",     (0, -1), (-1, -1), colors.white),
         ("FONTNAME",      (0, -1), (-1, -1), _PDF_FONT_BOLD),
         ("GRID",          (0, 0),  (-1, -1), 0.5, PDF_GREY),
-        ("ROWHEIGHT",     (0, 0),  (-1, -1), 20),
-        ("TOPPADDING",    (0, 0),  (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0),  (-1, -1), 4),
+        ("ROWHEIGHT",     (0, 0),  (-1, -1), 16),
+        ("TOPPADDING",    (0, 0),  (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0),  (-1, -1), 2),
+        ("LEFTPADDING",   (0, 0),  (-1, -1), 3),
+        ("RIGHTPADDING",  (0, 0),  (-1, -1), 3),
     ]))
+    title    = "Full Stock Report"
     elements = [
-        _pdf_header("Full Stock Report"),
-        Spacer(1, 0.3*cm),
-        HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
-        Spacer(1, 0.5*cm),
-        Paragraph("Summary", _STYLE_PDF_HEADING),
+        _pdf_header(title),
         Spacer(1, 0.2*cm),
+        HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
+        Spacer(1, 0.3*cm),
+        Paragraph("Summary", _STYLE_PDF_HEADING),
+        Spacer(1, 0.1*cm),
         summary_tbl,
-        Spacer(1, 0.8*cm),
+        Spacer(1, 0.5*cm),
     ]
     for eq_type in types_in_stock:
         elements.extend(_pdf_stock_section(eq_type))
-    return _build_pdf(elements)
+    return _build_pdf(elements, title)
 
 
 def generate_stock_pdf_by_type(equipment_type):
+    title    = f"{equipment_type} Stock Report"
     elements = [
-        _pdf_header(f"{equipment_type} Stock Report"),
-        Spacer(1, 0.3*cm),
+        _pdf_header(title),
+        Spacer(1, 0.2*cm),
         HRFlowable(width="100%", thickness=2, color=PDF_ACCENT),
-        Spacer(1, 0.5*cm),
+        Spacer(1, 0.3*cm),
     ]
     elements.extend(_pdf_stock_section(equipment_type))
-    return _build_pdf(elements)
+    return _build_pdf(elements, title)
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -998,9 +1144,9 @@ def _pdf_unit_block(unit):
         return []
     elements = [
         HRFlowable(width="100%", thickness=2, color=colors.HexColor("#003580")),
-        Spacer(1, 0.2*cm),
+        Spacer(1, 0.1*cm),
         Paragraph(unit.name.upper(), _STYLE_UNIT_HEAD),
-        Spacer(1, 0.2*cm),
+        Spacer(1, 0.1*cm),
     ]
     extra   = {"unit": unit}
     sec_num = 0
@@ -1008,22 +1154,24 @@ def _pdf_unit_block(unit):
         if Equipment.objects.filter(unit=unit, equipment_type__name=eq_type).exists():
             sec_num += 1
             elements.extend(_pdf_unit_section(eq_type, sec_num, extra))
-    elements.append(Spacer(1, 0.6*cm))
+    elements.append(Spacer(1, 0.4*cm))
     return elements
 
 
 def generate_unit_pdf_all():
-    elements = [_pdf_header("Equipment Report by Organisational Unit"), Spacer(1, 0.4*cm)]
+    title    = "Equipment Report by Organisational Unit"
+    elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
     for unit in Unit.objects.order_by("name"):
         elements.extend(_pdf_unit_block(unit))
-    return _build_pdf(elements)
+    return _build_pdf(elements, title)
 
 
 def generate_unit_pdf_by_unit(unit_id):
-    unit     = Unit.objects.get(pk=unit_id)
-    elements = [_pdf_header(f"{unit.name.upper()} — Equipment Report"), Spacer(1, 0.4*cm)]
+    unit  = Unit.objects.get(pk=unit_id)
+    title = f"{unit.name.upper()} — Equipment Report"
+    elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
     elements.extend(_pdf_unit_block(unit))
-    return _build_pdf(elements)
+    return _build_pdf(elements, title)
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -1065,9 +1213,9 @@ def _pdf_region_block(region):
         return []
     elements = [
         HRFlowable(width="100%", thickness=2, color=colors.HexColor("#003580")),
-        Spacer(1, 0.2*cm),
+        Spacer(1, 0.1*cm),
         Paragraph(region.name.upper(), _STYLE_REGION_HEAD),
-        Spacer(1, 0.2*cm),
+        Spacer(1, 0.1*cm),
     ]
     extra   = {"region": region}
     sec_num = 0
@@ -1075,22 +1223,24 @@ def _pdf_region_block(region):
         if Equipment.objects.filter(region=region, equipment_type__name=eq_type).exists():
             sec_num += 1
             elements.extend(_pdf_unit_section(eq_type, sec_num, extra))
-    elements.append(Spacer(1, 0.6*cm))
+    elements.append(Spacer(1, 0.4*cm))
     return elements
 
 
 def generate_region_pdf_all():
-    elements = [_pdf_header("Equipment Report by Region"), Spacer(1, 0.4*cm)]
+    title    = "Equipment Report by Region"
+    elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
     for region in Region.objects.order_by("name"):
         elements.extend(_pdf_region_block(region))
-    return _build_pdf(elements)
+    return _build_pdf(elements, title)
 
 
 def generate_region_pdf_by_region(region_id):
-    region   = Region.objects.get(pk=region_id)
-    elements = [_pdf_header(f"{region.name.upper()} — Equipment Report"), Spacer(1, 0.4*cm)]
+    region = Region.objects.get(pk=region_id)
+    title  = f"{region.name.upper()} — Equipment Report"
+    elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
     elements.extend(_pdf_region_block(region))
-    return _build_pdf(elements)
+    return _build_pdf(elements, title)
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -1132,9 +1282,9 @@ def _pdf_dpu_block(dpu):
         return []
     elements = [
         HRFlowable(width="100%", thickness=2, color=colors.HexColor("#003580")),
-        Spacer(1, 0.2*cm),
+        Spacer(1, 0.1*cm),
         Paragraph(dpu.name.upper(), _STYLE_DPU_HEAD),
-        Spacer(1, 0.2*cm),
+        Spacer(1, 0.1*cm),
     ]
     extra   = {"dpu": dpu}
     sec_num = 0
@@ -1142,19 +1292,21 @@ def _pdf_dpu_block(dpu):
         if Equipment.objects.filter(dpu=dpu, equipment_type__name=eq_type).exists():
             sec_num += 1
             elements.extend(_pdf_unit_section(eq_type, sec_num, extra))
-    elements.append(Spacer(1, 0.6*cm))
+    elements.append(Spacer(1, 0.4*cm))
     return elements
 
 
 def generate_dpu_pdf_all():
-    elements = [_pdf_header("Equipment Report by DPU"), Spacer(1, 0.4*cm)]
+    title    = "Equipment Report by DPU"
+    elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
     for dpu in DPU.objects.order_by("name"):
         elements.extend(_pdf_dpu_block(dpu))
-    return _build_pdf(elements)
+    return _build_pdf(elements, title)
 
 
 def generate_dpu_pdf_by_dpu(dpu_id):
-    dpu      = DPU.objects.get(pk=dpu_id)
-    elements = [_pdf_header(f"{dpu.name.upper()} — Equipment Report"), Spacer(1, 0.4*cm)]
+    dpu   = DPU.objects.get(pk=dpu_id)
+    title = f"{dpu.name.upper()} — Equipment Report"
+    elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
     elements.extend(_pdf_dpu_block(dpu))
-    return _build_pdf(elements)
+    return _build_pdf(elements, title)
