@@ -106,27 +106,14 @@ class AdminSetPasswordSerializer(serializers.Serializer):
     def save(self, user):
         validate_password(self.validated_data['new_password'], user)
         user.set_password(self.validated_data['new_password'])
-        user.is_first_login = True  
+        # Force a password change on next login and clear any lockout state.
+        user.is_first_login = True
+        user.failed_login_attempts = 0
+        user.is_locked = False
+        user.locked_until = None
         user.save()
         return user
     
-class AdminResetPasswordSerializer(serializers.Serializer):
-    reset_password = serializers.CharField(write_only=True, min_length=8)
-
-    def validate_reset_password(self, value):      
-        validate_password(value)
-        return value
-
-    def save(self, user):
-        user.set_password(self.validated_data['reset_password'])
-        user.is_first_login = True  
-        user.save()
-        return user
-    
-
-        
-
-
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
     new_password = serializers.CharField(write_only=True, min_length=8)

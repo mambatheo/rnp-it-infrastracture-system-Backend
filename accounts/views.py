@@ -14,8 +14,21 @@ from drf_spectacular.utils import extend_schema
 from .models import User
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, UserUpdateSerializer,
-    LoginSerializer, AdminSetPasswordSerializer, ChangePasswordSerializer, AdminResetPasswordSerializer,
+    LoginSerializer, AdminSetPasswordSerializer, ChangePasswordSerializer,
 )
+
+class IsAdminOrSuperuser(permissions.BasePermission):
+    """
+    DRF's IsAdminUser checks only `is_staff`. This project also uses `User.role`.
+    Allow access to ADMIN role users and superusers (and staff).
+    """
+    def has_permission(self, request, view):
+        u = getattr(request, "user", None)
+        return bool(
+            u
+            and u.is_authenticated
+            and (getattr(u, "is_superuser", False) or getattr(u, "is_staff", False) or getattr(u, "role", None) == User.ADMIN)
+        )
 
 
 # ─────────────────────────────────────────
@@ -47,7 +60,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @extend_schema(tags=["Users"])
-    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminOrSuperuser])
     def activate(self, request, pk=None):
         user = self.get_object()
         user.is_active = True
@@ -55,7 +68,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response({"status": "User activated."})
 
     @extend_schema(tags=["Users"])
-    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminOrSuperuser])
     def deactivate(self, request, pk=None):
         user = self.get_object()
         user.is_active = False
@@ -63,7 +76,7 @@ class UserViewSet(viewsets.ModelViewSet):
         return Response({"status": "User deactivated."})
 
     @extend_schema(tags=["Users"])
-    @action(detail=True, methods=["post"], permission_classes=[permissions.IsAdminUser])
+    @action(detail=True, methods=["post"], permission_classes=[IsAdminOrSuperuser])
     def reset_password(self, request, pk=None):
         user = self.get_object()
         serializer = AdminSetPasswordSerializer(data=request.data)
