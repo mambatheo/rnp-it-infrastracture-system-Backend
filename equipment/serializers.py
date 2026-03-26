@@ -248,6 +248,10 @@ class LendingSerializer(serializers.ModelSerializer):
     equipment_type         = serializers.CharField(source="equipment.equipment_type.name", read_only=True)
     equipment_marking_code = serializers.CharField(source="equipment.marking_code",   read_only=True)
     equipment_brand        = serializers.CharField(source="equipment.brand.name",     read_only=True)
+    station = serializers.CharField(source="equipment.station.name", read_only=True)
+    dpu = serializers.CharField(source="equipment.dpu.name", read_only=True)
+    region = serializers.CharField(source="equipment.region.name", read_only=True)
+    unit = serializers.CharField(source="equipment.unit.name", read_only=True)
 
     issued_by_name           = serializers.SerializerMethodField()
     return_confirmed_by_name = serializers.SerializerMethodField()
@@ -260,6 +264,10 @@ class LendingSerializer(serializers.ModelSerializer):
             "status",
             # Borrower
             "borrower_name", "phone_number", "purpose",
+            #Special Unit
+            "unit",
+            #Territorial Units
+            "station", "dpu", "region",
             # Dates
             "issued_date", "returned_date",
             # Return details

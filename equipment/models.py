@@ -581,8 +581,20 @@ class Lending(models.Model):
     # ── Borrower Info ─────────────────────────────────────────────────────────
 
     borrower_name = models.CharField(max_length=100, help_text="Person borrowing the equipment.")
-    phone_number  = models.CharField(max_length=20, blank=True, null=True)
-    purpose       = models.TextField(help_text="Reason for borrowing.")
+    
+    
+    # ── Special Units ────────────────────────────────────────────────────────
+ 
+    unit = models.ForeignKey(Unit, on_delete=models.PROTECT, blank=True, null=True, related_name="unit_borrower")
+     
+    # ── Territorial Units ─────────────────────────────────────────────────────────
+    
+    region = models.ForeignKey(Region, on_delete=models.PROTECT, blank=True, null=True, related_name="region_borrower")
+    dpu = models.ForeignKey(DPU, on_delete=models.PROTECT, blank=True, null=True, related_name="dpu_borrower")
+    station = models.ForeignKey(Station, on_delete=models.PROTECT, blank=True, null=True, related_name="station_borrower")
+    
+    phone_number  = models.CharField(max_length=20, help_text="Borrower's phone number")
+    purpose  = models.TextField(help_text="Reason for borrowing.") 
 
     # ── Dates ──────────────────────────────────────────────────────────────────
 

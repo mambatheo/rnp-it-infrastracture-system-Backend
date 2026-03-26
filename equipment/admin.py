@@ -6,7 +6,7 @@ from .models import (
     Unit, Directorate, Department, Office,
     EquipmentCategory, Brand, EquipmentStatus,
     Equipment,
-    Stock, Deployment, Lending,
+    Stock, Deployment, Lending, 
 )
 
 
@@ -86,7 +86,7 @@ class LendingInline(admin.TabularInline):
     model = Lending
     extra = 0
     fields = [
-        "status", "borrower_name", "phone_number",
+        "status", "borrower_name", "phone_number", "unit", "region", "dpu", "station", 
         "issued_date", "returned_date", "condition_on_return", "issued_by",
     ]
     readonly_fields = ["issued_date", "issued_by"]
@@ -483,7 +483,7 @@ class LendingAdmin(admin.ModelAdmin):
 
     list_display = [
         "equipment", "status",
-        "borrower_name", "phone_number",
+        "borrower_name", "phone_number", "unit", "region", "dpu", "station",
         "issued_date", "returned_date",
         "condition_on_return", "issued_by",
     ]
@@ -516,6 +516,18 @@ class LendingAdmin(admin.ModelAdmin):
                 "purpose",
             )
         }),
+        (_("Territorial Units"), {
+            "fields": (
+                ( "region", "dpu", "station",),
+            )
+        }),
+        (_("Special Units"), {
+            "fields": (
+                ("unit",)
+                
+            )
+        }),
+        
         (_("Dates"), {
             "fields": (
                 ("issued_date", "returned_date"),

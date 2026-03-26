@@ -109,6 +109,22 @@ class AdminSetPasswordSerializer(serializers.Serializer):
         user.is_first_login = True  
         user.save()
         return user
+    
+class AdminResetPasswordSerializer(serializers.Serializer):
+    reset_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate_reset_password(self, value):      
+        validate_password(value)
+        return value
+
+    def save(self, user):
+        user.set_password(self.validated_data['reset_password'])
+        user.is_first_login = True  
+        user.save()
+        return user
+    
+
+        
 
 
 class ChangePasswordSerializer(serializers.Serializer):

@@ -14,7 +14,7 @@ from drf_spectacular.utils import extend_schema
 from .models import User
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, UserUpdateSerializer,
-    LoginSerializer, AdminSetPasswordSerializer, ChangePasswordSerializer,
+    LoginSerializer, AdminSetPasswordSerializer, ChangePasswordSerializer, AdminResetPasswordSerializer,
 )
 
 
