@@ -1,5 +1,6 @@
 import base64
 
+from django.core.cache import cache
 from django.db.models import Count, Exists, OuterRef, Q
 from django.http import HttpResponse
 from django.utils import timezone
@@ -656,10 +657,15 @@ class DPUPDFReportView(_ReportBaseView):
 
 @extend_schema(tags=["Reports"])
 class ReportCountsView(APIView):
-  
     permission_classes = [permissions.IsAuthenticated]
+    _CACHE_KEY     = "report_counts_summary"
+    _CACHE_TIMEOUT = 60 * 5   # 5 minutes
 
     def get(self, request):
+        cached = cache.get(self._CACHE_KEY)
+        if cached is not None:
+            return Response(cached)
+
         # 1. Equipment count per type
         eq_qs = (
             Equipment.objects
@@ -742,11 +748,13 @@ class ReportCountsView(APIView):
                                   ).count(),
         }
 
-        return Response({
+        payload = {
             "totals":           totals,
             "equipment_counts": equipment_counts,
             "stock_counts":     stock_counts,
             "unit_counts":      unit_counts,
             "region_counts":    region_counts,
             "dpu_counts":       dpu_counts,
-        })
+        }
+        cache.set(self._CACHE_KEY, payload, self._CACHE_TIMEOUT)
+        return Response(payload)

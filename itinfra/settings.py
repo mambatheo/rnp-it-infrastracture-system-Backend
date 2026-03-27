@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from datetime import timedelta
 from pathlib import Path
 import dj_database_url
+from celery.schedules import crontab
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -29,6 +30,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'django_filters',
     'django_celery_results',
+    'django_celery_beat',
     'accounts',
     'equipment',
     # 'repairs',
@@ -183,11 +185,44 @@ SPECTACULAR_SETTINGS = {
     'SERVE_AUTHENTICATION': [],
 }
 
+# Cache + Redis settings
+REDIS_BROKER_URL = os.getenv("REDIS_BROKER_URL", "redis://127.0.0.1:6379/0")
+REDIS_RESULT_URL = os.getenv("REDIS_RESULT_URL", "redis://127.0.0.1:6379/1")
+REDIS_CACHE_URL = os.getenv("REDIS_CACHE_URL", "redis://127.0.0.1:6379/2")
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": REDIS_CACHE_URL,
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+            "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+        },
+        "KEY_PREFIX": "itinfra",
+        "TIMEOUT": 60 * 30,
+    }
+}
+
 # Celery settings
-CELERY_BROKER_URL         = "redis://localhost:6379/0"
-CELERY_RESULT_BACKEND     = "django-db"
+CELERY_BROKER_URL         = REDIS_BROKER_URL
+CELERY_RESULT_BACKEND     = REDIS_RESULT_URL
 CELERY_ACCEPT_CONTENT     = ["json"]
 CELERY_TASK_SERIALIZER    = "json"
 CELERY_RESULT_SERIALIZER  = "json"
-CELERY_TASK_TIME_LIMIT    = 600    
-CELERY_TASK_SOFT_TIME_LIMIT = 540  
+CELERY_RESULT_EXPIRES       = 60 * 30   # drop results after 30 min (was 1 hour)
+CELERY_TASK_TIME_LIMIT      = 600
+CELERY_TASK_SOFT_TIME_LIMIT = 540
+# Compress large report blobs before storing them in Redis
+CELERY_RESULT_COMPRESSION   = "zlib"
+
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+CELERY_BEAT_SCHEDULE = {
+    # Prewarm once per hour — avoids starving user-triggered Celery tasks.
+    # The duplicate 'every-25-min' and 'startup-window' schedules have been
+    # removed; they caused workers to spend most of their time regenerating
+    # reports and left no capacity for on-demand requests.
+    "prewarm-all-reports": {
+        "task": "equipment.tasks.prewarm_all_reports",
+        "schedule": crontab(minute=0, hour="*"),   # once per hour, on the hour
+    },
+}

@@ -1,6 +1,7 @@
 import io
 import os
 import re
+import struct
 from django.conf import settings
 from django.utils import timezone
 from django.db.models import Count, Q
@@ -387,13 +388,69 @@ def _make_formats(wb):
 # XLSXWRITER HEADER BLOCK
 # ─────────────────────────────────────────
 
+def _png_size(path):
+    """
+    Return PNG (width, height) in pixels, or None if unreadable.
+    """
+    try:
+        with open(path, "rb") as f:
+            sig = f.read(8)
+            if sig != b"\x89PNG\r\n\x1a\n":
+                return None
+            f.read(4)  # chunk length (IHDR is first)
+            chunk_type = f.read(4)
+            if chunk_type != b"IHDR":
+                return None
+            width, height = struct.unpack(">II", f.read(8))
+            return width, height
+    except Exception:
+        return None
+
+
+def _xl_logo_options():
+    """
+    Keep logo inside a predictable box so it cannot overlap table content.
+
+    XlsxWriter renders images at 96 DPI on screen.  High-res PNGs (e.g. 300 DPI
+    source files) can have very large pixel dimensions, so even a small scale
+    factor produces a huge rendered image.  We therefore target a fixed *on-screen*
+    size of 64×64 px and use object_position=3 (don't move or size with cells)
+    to prevent the image from pushing rows around.
+    """
+    TARGET_PX = 64          # desired rendered size in screen-pixels (≈ 96 DPI)
+    DEFAULT_SCALE = 0.07    # safe fallback when image dimensions are unknown
+
+    size = _png_size(LOGO_PATH)
+    if not size:
+        return {
+            "x_scale": DEFAULT_SCALE, "y_scale": DEFAULT_SCALE,
+            "x_offset": 4, "y_offset": 4,
+            "object_position": 3,
+        }
+
+    width, height = size
+    if width <= 0 or height <= 0:
+        return {
+            "x_scale": DEFAULT_SCALE, "y_scale": DEFAULT_SCALE,
+            "x_offset": 4, "y_offset": 4,
+            "object_position": 3,
+        }
+
+    scale = min(TARGET_PX / width, TARGET_PX / height, 1.0)
+    return {
+        "x_scale": scale, "y_scale": scale,
+        "x_offset": 4, "y_offset": 4,
+        "object_position": 3,
+    }
+
+
 def _xl_write_header(ws, fmt, report_title, n_cols):
     ws.set_row(0, 80)
     ws.set_row(1, 22)
     ws.set_row(2, 18)
     ws.set_row(3, 6)
     if os.path.exists(LOGO_PATH):
-        ws.insert_image(0, 0, LOGO_PATH, {"x_scale": 0.55, "y_scale": 0.55})
+        ws.insert_image(0, 0, LOGO_PATH, _xl_logo_options())
     title_col = max(1, n_cols // 2)
     ws.merge_range(0, title_col, 0, n_cols - 1, SYSTEM_NAME,     fmt["sys_name"])
     ws.merge_range(1, title_col, 1, n_cols - 1, report_title,    fmt["report_title"])
@@ -881,11 +938,11 @@ def _build_pdf(elements, report_title=""):
 # PDF UNIT / REGION / DPU SECTION
 # ─────────────────────────────────────────
 
-def _pdf_unit_section(eq_type, section_num, extra_filter):
-    label = f"{section_num}. {_TYPE_LABELS.get(eq_type, eq_type.upper())}"
-    rows  = _unit_device_rows_fast(extra_filter, eq_type)
+def _pdf_unit_section(eq_type, section_num, rows):
+    """Build one equipment-type section from pre-fetched rows (no DB call)."""
     if not rows:
         return []
+    label = f"{section_num}. {_TYPE_LABELS.get(eq_type, eq_type.upper())}"
     unit_widths = [_UNIT_FIELD_WIDTH[h] for h in UNIT_FIELDS]
     headers_f, rows_f, col_widths_f = _filter_empty_cols(UNIT_FIELDS, rows, widths=unit_widths)
     w_header, w_data = _wrap_rows(headers_f, rows_f)
@@ -898,6 +955,142 @@ def _pdf_unit_section(eq_type, section_num, extra_filter):
     elements.append(t)
     elements.append(Spacer(1, 0.3*cm))
     return elements
+
+
+# ─────────────────────────────────────────
+# BATCHED LOCATION DATA HELPERS
+# ─────────────────────────────────────────
+
+def _fetch_unit_rows_grouped(unit_qs):
+    """
+    Fetch all equipment for a set of units in ONE query.
+    Returns: dict { unit_id: { eq_type: [[row], ...] } }
+    """
+    ids = list(unit_qs.values_list("id", flat=True))
+    if not ids:
+        return {}
+    qs = (
+        Equipment.objects
+        .filter(unit_id__in=ids, equipment_type__isnull=False)
+        .values(
+            "unit_id", "equipment_type__name",
+            "brand__name", "serial_number", "marking_code",
+            "status__name", "deployment_date",
+            "office__name", "department__name", "directorate__name", "unit__name",
+            "region__name", "region__region_office__name",
+            "dpu__name",    "dpu__dpu_office__name",
+        )
+        .order_by("unit_id", "equipment_type__name", "brand__name", "serial_number")
+    )
+    grouped = {}   # { unit_id: { eq_type: [rows] } }
+    counters = {}  # { (unit_id, eq_type): int }
+    for obj in qs.iterator(chunk_size=2000):
+        uid    = str(obj["unit_id"])
+        etype  = obj["equipment_type__name"]
+        key    = (uid, etype)
+        if uid not in grouped:
+            grouped[uid] = {}
+        if etype not in grouped[uid]:
+            grouped[uid][etype] = []
+        counters[key] = counters.get(key, 0) + 1
+        grouped[uid][etype].append([
+            str(counters[key]),
+            obj["brand__name"]   or "—",
+            obj["serial_number"] or "—",
+            obj["marking_code"]  or "—",
+            _build_location_from_dict(obj),
+            obj["status__name"]  or "—",
+            _age_from_date(obj["deployment_date"]),
+        ])
+    return grouped
+
+
+def _fetch_region_rows_grouped(region_qs):
+    """
+    Fetch all equipment for a set of regions in ONE query.
+    Returns: dict { region_id: { eq_type: [[row], ...] } }
+    """
+    ids = list(region_qs.values_list("id", flat=True))
+    if not ids:
+        return {}
+    qs = (
+        Equipment.objects
+        .filter(region_id__in=ids, equipment_type__isnull=False)
+        .values(
+            "region_id", "equipment_type__name",
+            "brand__name", "serial_number", "marking_code",
+            "status__name", "deployment_date",
+            "office__name", "department__name", "directorate__name", "unit__name",
+            "region__name", "region__region_office__name",
+            "dpu__name",    "dpu__dpu_office__name",
+        )
+        .order_by("region_id", "equipment_type__name", "brand__name", "serial_number")
+    )
+    grouped = {}
+    counters = {}
+    for obj in qs.iterator(chunk_size=2000):
+        rid   = str(obj["region_id"])
+        etype = obj["equipment_type__name"]
+        key   = (rid, etype)
+        if rid not in grouped:
+            grouped[rid] = {}
+        if etype not in grouped[rid]:
+            grouped[rid][etype] = []
+        counters[key] = counters.get(key, 0) + 1
+        grouped[rid][etype].append([
+            str(counters[key]),
+            obj["brand__name"]   or "—",
+            obj["serial_number"] or "—",
+            obj["marking_code"]  or "—",
+            _build_location_from_dict(obj),
+            obj["status__name"]  or "—",
+            _age_from_date(obj["deployment_date"]),
+        ])
+    return grouped
+
+
+def _fetch_dpu_rows_grouped(dpu_qs):
+    """
+    Fetch all equipment for a set of DPUs in ONE query.
+    Returns: dict { dpu_id: { eq_type: [[row], ...] } }
+    """
+    ids = list(dpu_qs.values_list("id", flat=True))
+    if not ids:
+        return {}
+    qs = (
+        Equipment.objects
+        .filter(dpu_id__in=ids, equipment_type__isnull=False)
+        .values(
+            "dpu_id", "equipment_type__name",
+            "brand__name", "serial_number", "marking_code",
+            "status__name", "deployment_date",
+            "office__name", "department__name", "directorate__name", "unit__name",
+            "region__name", "region__region_office__name",
+            "dpu__name",    "dpu__dpu_office__name",
+        )
+        .order_by("dpu_id", "equipment_type__name", "brand__name", "serial_number")
+    )
+    grouped = {}
+    counters = {}
+    for obj in qs.iterator(chunk_size=2000):
+        did   = str(obj["dpu_id"])
+        etype = obj["equipment_type__name"]
+        key   = (did, etype)
+        if did not in grouped:
+            grouped[did] = {}
+        if etype not in grouped[did]:
+            grouped[did][etype] = []
+        counters[key] = counters.get(key, 0) + 1
+        grouped[did][etype].append([
+            str(counters[key]),
+            obj["brand__name"]   or "—",
+            obj["serial_number"] or "—",
+            obj["marking_code"]  or "—",
+            _build_location_from_dict(obj),
+            obj["status__name"]  or "—",
+            _age_from_date(obj["deployment_date"]),
+        ])
+    return grouped
 
 
 # ═════════════════════════════════════════════════════════════════
@@ -1140,8 +1333,9 @@ def generate_unit_excel_by_unit(unit_id):
 #  PDF — UNITS
 # ═════════════════════════════════════════════════════════════════
 
-def _pdf_unit_block(unit):
-    if not Equipment.objects.filter(unit=unit).exists():
+def _pdf_unit_block(unit, type_rows):
+    """Build PDF block for one unit using pre-fetched type_rows dict."""
+    if not type_rows:
         return []
     elements = [
         HRFlowable(width="100%", thickness=2, color=colors.HexColor("#003580")),
@@ -1149,29 +1343,35 @@ def _pdf_unit_block(unit):
         Paragraph(unit.name.upper(), _STYLE_UNIT_HEAD),
         Spacer(1, 0.1*cm),
     ]
-    extra   = {"unit": unit}
     sec_num = 0
     for eq_type in _TYPE_ORDER:
-        if Equipment.objects.filter(unit=unit, equipment_type__name=eq_type).exists():
+        rows = type_rows.get(eq_type, [])
+        if rows:
             sec_num += 1
-            elements.extend(_pdf_unit_section(eq_type, sec_num, extra))
+            elements.extend(_pdf_unit_section(eq_type, sec_num, rows))
     elements.append(Spacer(1, 0.4*cm))
     return elements
 
 
 def generate_unit_pdf_all():
+    """Generate PDF for all units — ONE query for all equipment, zero per-unit queries."""
     title    = "Equipment Report by Organisational Unit"
+    units    = list(Unit.objects.order_by("name"))
+    all_data = _fetch_unit_rows_grouped(Unit.objects.all())
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
-    for unit in Unit.objects.order_by("name"):
-        elements.extend(_pdf_unit_block(unit))
+    for unit in units:
+        type_rows = all_data.get(str(unit.id), {})
+        elements.extend(_pdf_unit_block(unit, type_rows))
     return _build_pdf(elements, title)
 
 
 def generate_unit_pdf_by_unit(unit_id):
-    unit  = Unit.objects.get(pk=unit_id)
-    title = f"{unit.name.upper()} — Equipment Report"
+    unit     = Unit.objects.get(pk=unit_id)
+    all_data = _fetch_unit_rows_grouped(Unit.objects.filter(pk=unit_id))
+    type_rows = all_data.get(str(unit.id), {})
+    title    = f"{unit.name.upper()} — Equipment Report"
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
-    elements.extend(_pdf_unit_block(unit))
+    elements.extend(_pdf_unit_block(unit, type_rows))
     return _build_pdf(elements, title)
 
 
@@ -1209,8 +1409,9 @@ def generate_region_excel_by_region(region_id):
 #  PDF — REGIONS
 # ═════════════════════════════════════════════════════════════════
 
-def _pdf_region_block(region):
-    if not Equipment.objects.filter(region=region).exists():
+def _pdf_region_block(region, type_rows):
+    """Build PDF block for one region using pre-fetched type_rows dict."""
+    if not type_rows:
         return []
     elements = [
         HRFlowable(width="100%", thickness=2, color=colors.HexColor("#003580")),
@@ -1218,29 +1419,35 @@ def _pdf_region_block(region):
         Paragraph(region.name.upper(), _STYLE_REGION_HEAD),
         Spacer(1, 0.1*cm),
     ]
-    extra   = {"region": region}
     sec_num = 0
     for eq_type in _TYPE_ORDER:
-        if Equipment.objects.filter(region=region, equipment_type__name=eq_type).exists():
+        rows = type_rows.get(eq_type, [])
+        if rows:
             sec_num += 1
-            elements.extend(_pdf_unit_section(eq_type, sec_num, extra))
+            elements.extend(_pdf_unit_section(eq_type, sec_num, rows))
     elements.append(Spacer(1, 0.4*cm))
     return elements
 
 
 def generate_region_pdf_all():
-    title    = "Equipment Report by Region"
+    """Generate PDF for all regions — ONE query for all equipment, zero per-region queries."""
+    title   = "Equipment Report by Region"
+    regions = list(Region.objects.order_by("name"))
+    all_data = _fetch_region_rows_grouped(Region.objects.all())
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
-    for region in Region.objects.order_by("name"):
-        elements.extend(_pdf_region_block(region))
+    for region in regions:
+        type_rows = all_data.get(str(region.id), {})
+        elements.extend(_pdf_region_block(region, type_rows))
     return _build_pdf(elements, title)
 
 
 def generate_region_pdf_by_region(region_id):
-    region = Region.objects.get(pk=region_id)
-    title  = f"{region.name.upper()} — Equipment Report"
+    region   = Region.objects.get(pk=region_id)
+    all_data = _fetch_region_rows_grouped(Region.objects.filter(pk=region_id))
+    type_rows = all_data.get(str(region.id), {})
+    title    = f"{region.name.upper()} — Equipment Report"
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
-    elements.extend(_pdf_region_block(region))
+    elements.extend(_pdf_region_block(region, type_rows))
     return _build_pdf(elements, title)
 
 
@@ -1278,8 +1485,9 @@ def generate_dpu_excel_by_dpu(dpu_id):
 #  PDF — DPUs
 # ═════════════════════════════════════════════════════════════════
 
-def _pdf_dpu_block(dpu):
-    if not Equipment.objects.filter(dpu=dpu).exists():
+def _pdf_dpu_block(dpu, type_rows):
+    """Build PDF block for one DPU using pre-fetched type_rows dict."""
+    if not type_rows:
         return []
     elements = [
         HRFlowable(width="100%", thickness=2, color=colors.HexColor("#003580")),
@@ -1287,27 +1495,33 @@ def _pdf_dpu_block(dpu):
         Paragraph(dpu.name.upper(), _STYLE_DPU_HEAD),
         Spacer(1, 0.1*cm),
     ]
-    extra   = {"dpu": dpu}
     sec_num = 0
     for eq_type in _TYPE_ORDER:
-        if Equipment.objects.filter(dpu=dpu, equipment_type__name=eq_type).exists():
+        rows = type_rows.get(eq_type, [])
+        if rows:
             sec_num += 1
-            elements.extend(_pdf_unit_section(eq_type, sec_num, extra))
+            elements.extend(_pdf_unit_section(eq_type, sec_num, rows))
     elements.append(Spacer(1, 0.4*cm))
     return elements
 
 
 def generate_dpu_pdf_all():
-    title    = "Equipment Report by DPU"
+    """Generate PDF for all DPUs — ONE query for all equipment, zero per-DPU queries."""
+    title   = "Equipment Report by DPU"
+    dpus    = list(DPU.objects.order_by("name"))
+    all_data = _fetch_dpu_rows_grouped(DPU.objects.all())
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
-    for dpu in DPU.objects.order_by("name"):
-        elements.extend(_pdf_dpu_block(dpu))
+    for dpu in dpus:
+        type_rows = all_data.get(str(dpu.id), {})
+        elements.extend(_pdf_dpu_block(dpu, type_rows))
     return _build_pdf(elements, title)
 
 
 def generate_dpu_pdf_by_dpu(dpu_id):
-    dpu   = DPU.objects.get(pk=dpu_id)
-    title = f"{dpu.name.upper()} — Equipment Report"
+    dpu      = DPU.objects.get(pk=dpu_id)
+    all_data = _fetch_dpu_rows_grouped(DPU.objects.filter(pk=dpu_id))
+    type_rows = all_data.get(str(dpu.id), {})
+    title    = f"{dpu.name.upper()} — Equipment Report"
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
-    elements.extend(_pdf_dpu_block(dpu))
+    elements.extend(_pdf_dpu_block(dpu, type_rows))
     return _build_pdf(elements, title)

@@ -414,6 +414,18 @@ class Equipment(models.Model):
         ordering         = ["-created_at"]
         verbose_name     = _("Equipment")
         verbose_name_plural = _("Equipment")
+        indexes = [
+            models.Index(fields=["equipment_type"], name="eq_type_idx"),
+            models.Index(fields=["unit"], name="eq_unit_idx"),
+            models.Index(fields=["region"], name="eq_region_idx"),
+            models.Index(fields=["dpu"], name="eq_dpu_idx"),
+            models.Index(fields=["status"], name="eq_status_idx"),
+            models.Index(fields=["deployment_date"], name="eq_deploy_date_idx"),
+            models.Index(fields=["brand"], name="eq_brand_idx"),
+            models.Index(fields=["unit", "equipment_type"], name="eq_unit_type_idx"),
+            models.Index(fields=["region", "equipment_type"], name="eq_region_type_idx"),
+            models.Index(fields=["dpu", "equipment_type"], name="eq_dpu_type_idx"),
+        ]
 
     def __str__(self):
         parts = [self.name]
@@ -427,10 +439,17 @@ class Equipment(models.Model):
 # ─────────────────────────────────────────
 
 class Stock(models.Model):
-  
+    class Condition(models.TextChoices):
+        NEW = "New", _("New")
+        GOOD = "Good", _("Good")
+        FAIR = "Fair", _("Fair")
+        POOR = "Poor", _("Poor")
+        DAMAGED = "Damaged", _("Damaged")
+        UNDER_REPAIR = "Under Repair", _("Under Repair")
 
     id               = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     equipment        = models.OneToOneField(Equipment, on_delete=models.PROTECT, related_name="stock")
+    condition        = models.CharField(max_length=100, choices=Condition.choices, default=Condition.NEW)
     storage_location = models.CharField(
         max_length=100, blank=True, null=True,
         help_text="Logistics or IT Tech Support."
@@ -451,6 +470,9 @@ class Stock(models.Model):
         ordering         = ["-date_added"]
         verbose_name     = _("Stock Item")
         verbose_name_plural = _("Stock Items")
+        indexes = [
+            models.Index(fields=["equipment"], name="stock_equipment_idx"),
+        ]
 
     def __str__(self):
         return f"[STOCK] {self.equipment} — {self.condition}"
