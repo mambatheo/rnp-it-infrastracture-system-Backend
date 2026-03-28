@@ -1,7 +1,7 @@
 # serializers.py
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
-from .models import User
+from .models import User, LoginSlideshowImage
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -137,3 +137,44 @@ class ChangePasswordSerializer(serializers.Serializer):
         user.is_first_login = False
         user.save()
         return user
+    
+class LoginSlideshowImageSerializer(serializers.ModelSerializer):
+    """Full serializer — used by admin CRUD endpoints."""
+    image_url = serializers.SerializerMethodField()
+ 
+    class Meta:
+        model  = LoginSlideshowImage
+        fields = [
+            'id', 'image', 'image_url',
+            'caption', 'order', 'is_active',
+            'uploaded_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'image_url', 'uploaded_at', 'updated_at']
+ 
+    def get_image_url(self, obj):
+        """Return the absolute Cloudinary URL (or relative URL as fallback)."""
+        request = self.context.get('request')
+        if obj.image:
+            url = obj.image.url          # Cloudinary returns a full https:// URL
+            if request and not url.startswith('http'):
+                return request.build_absolute_uri(url)
+            return url
+        return None
+ 
+ 
+class LoginSlideshowImagePublicSerializer(serializers.ModelSerializer):
+    """Minimal read-only serializer — used by the public (unauthenticated) endpoint."""
+    image_url = serializers.SerializerMethodField()
+ 
+    class Meta:
+        model  = LoginSlideshowImage
+        fields = ['id', 'image_url', 'caption', 'order']
+ 
+    def get_image_url(self, obj):
+        request = self.context.get('request')
+        if obj.image:
+            url = obj.image.url
+            if request and not url.startswith('http'):
+                return request.build_absolute_uri(url)
+            return url
+        return None

@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.utils.translation import gettext_lazy as _
-from .models import User
+from .models import User, LoginSlideshowImage
 
 
 
@@ -36,4 +36,11 @@ class UserAdmin(BaseUserAdmin):
         # Trigger model-level clean() so the "at least one location" rule is
         # enforced even when creating/editing users from the Django admin panel.
         obj.full_clean()
-        super().save_model(request, obj, form, change)
+        super().save_model(request, obj, form, change)
+        
+        
+@admin.register(LoginSlideshowImage)
+class LoginSlideshowImageAdmin(admin.ModelAdmin):
+    list_display  = ['id', 'caption', 'order', 'is_active', 'uploaded_at']
+    list_editable = ['order', 'is_active']
+    ordering      = ['order', 'uploaded_at']

@@ -777,24 +777,42 @@ TABLE_STYLE = TableStyle([
 # PDF HELPERS
 # ─────────────────────────────────────────
 
-# Threshold for using Paragraph (expensive) vs plain string (fast)
-_WRAP_THRESHOLD = 25
+# Creating many Paragraph objects is extremely expensive in ReportLab.
+# To keep PDF generation fast, we keep body cells as plain strings and
+# truncate very long values (mostly "Location") to prevent pathological layouts.
+_PDF_MAX_CELL_CHARS = 60
+
+def _pdf_cell_text(val, max_chars=_PDF_MAX_CELL_CHARS):
+    s = "—" if val is None else str(val)
+    s = s.strip() or "—"
+    if max_chars and len(s) > max_chars:
+        return s[: max_chars - 1] + "…"
+    return s
 
 def _wrap_rows(header_row, data_rows):
-    """Wrap cells for PDF table. Uses plain strings for short text to improve performance."""
+    """Wrap header with Paragraph; keep data rows as strings for speed."""
     wrapped_header = [Paragraph(str(h), _HEADER_CELL_STYLE) for h in header_row]
-    wrapped_data   = []
-    for row in data_rows:
-        wrapped_row = []
-        for cell in row:
-            cell_str = str(cell)
-            # Only use Paragraph for longer text that might need wrapping
-            if len(cell_str) > _WRAP_THRESHOLD:
-                wrapped_row.append(Paragraph(cell_str, _CELL_STYLE))
-            else:
-                wrapped_row.append(cell_str)
-        wrapped_data.append(wrapped_row)
+    wrapped_data   = [[_pdf_cell_text(c) for c in row] for row in data_rows]
     return wrapped_header, wrapped_data
+
+
+def _pdf_tables_chunked(headers, rows, col_widths, *, chunk_size=200):
+    """
+    Build one or more Tables from rows, split into smaller chunks.
+    This avoids very slow layout when a single table has many rows.
+    """
+    if not rows:
+        return []
+    out = []
+    for start in range(0, len(rows), chunk_size):
+        chunk = rows[start:start + chunk_size]
+        w_header, w_data = _wrap_rows(headers, chunk)
+        t = Table([w_header] + w_data, repeatRows=1, hAlign="LEFT",
+                  colWidths=_scale_to_page(col_widths))
+        t.setStyle(TABLE_STYLE)
+        out.append(t)
+        out.append(Spacer(1, 0.25 * cm))
+    return out
 
 
 
@@ -907,12 +925,8 @@ def _pdf_equipment_section(equipment_type, rows=None):
     headers, rows, col_widths = _filter_empty_cols(
         BASIC_FIELDS, rows, widths=[_FIELD_WIDTH[h] for h in BASIC_FIELDS],
     )
-    w_header, w_data = _wrap_rows(headers, rows)
-    t = Table([w_header] + w_data, repeatRows=1, hAlign="LEFT",
-              colWidths=_scale_to_page(col_widths))
-    t.setStyle(TABLE_STYLE)
-    elements.append(t)
-    elements.append(Spacer(1, 0.3*cm))
+    # Chunk large tables to keep ReportLab layout fast.
+    elements.extend(_pdf_tables_chunked(headers, rows, col_widths, chunk_size=200))
     return elements
 
 
@@ -945,15 +959,8 @@ def _pdf_unit_section(eq_type, section_num, rows):
     label = f"{section_num}. {_TYPE_LABELS.get(eq_type, eq_type.upper())}"
     unit_widths = [_UNIT_FIELD_WIDTH[h] for h in UNIT_FIELDS]
     headers_f, rows_f, col_widths_f = _filter_empty_cols(UNIT_FIELDS, rows, widths=unit_widths)
-    w_header, w_data = _wrap_rows(headers_f, rows_f)
     elements = [Paragraph(label, _STYLE_SEC_HEAD)]
-    t = Table(
-        [w_header] + w_data, repeatRows=1, hAlign="LEFT",
-        colWidths=_scale_to_page(col_widths_f),
-    )
-    t.setStyle(TABLE_STYLE)
-    elements.append(t)
-    elements.append(Spacer(1, 0.3*cm))
+    elements.extend(_pdf_tables_chunked(headers_f, rows_f, col_widths_f, chunk_size=200))
     return elements
 
 
@@ -1224,12 +1231,7 @@ def _pdf_stock_section(equipment_type):
         return elements
     stock_widths = [_STOCK_FIELD_WIDTH[h] for h in STOCK_FIELDS]
     headers, rows, col_widths = _filter_empty_cols(STOCK_FIELDS, rows, widths=stock_widths)
-    w_header, w_data = _wrap_rows(headers, rows)
-    t = Table([w_header] + w_data, repeatRows=1, hAlign="LEFT",
-              colWidths=_scale_to_page(col_widths))
-    t.setStyle(TABLE_STYLE)
-    elements.append(t)
-    elements.append(Spacer(1, 0.3*cm))
+    elements.extend(_pdf_tables_chunked(headers, rows, col_widths, chunk_size=200))
     return elements
 
 

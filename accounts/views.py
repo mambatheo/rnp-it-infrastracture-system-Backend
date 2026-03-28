@@ -1,20 +1,25 @@
 from datetime import timedelta
 
 from django.contrib.auth import authenticate
+from django.db import DatabaseError
 from django.utils import timezone
 
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import TokenError
 
 from drf_spectacular.utils import extend_schema
 
-from .models import User
+from .models import User, LoginSlideshowImage
 from .serializers import (
     UserSerializer, UserRegistrationSerializer, UserUpdateSerializer,
-    LoginSerializer, AdminSetPasswordSerializer, ChangePasswordSerializer,
+    LoginSerializer, AdminSetPasswordSerializer, ChangePasswordSerializer, LoginSlideshowImageSerializer,
+    LoginSlideshowImagePublicSerializer,
 )
 
 class IsAdminOrSuperuser(permissions.BasePermission):
@@ -263,3 +268,98 @@ class AuthViewSet(viewsets.ViewSet):
             )
 
         return Response({"message": "Logged out successfully."})
+
+
+# ── Public endpoint (no auth required) ───────────────────────────────────────
+class SlideshowPublicListView(APIView):
+    """
+    GET /api/v1/slideshow/public/
+    Returns only active images ordered by `order`.
+    No authentication required — called by the login page.
+    """
+    permission_classes = [AllowAny]
+ 
+    def get(self, request):
+        try:
+            qs = LoginSlideshowImage.objects.filter(is_active=True).order_by(
+                "order", "uploaded_at"
+            )
+            serializer = LoginSlideshowImagePublicSerializer(
+                qs, many=True, context={"request": request}
+            )
+            return Response(serializer.data)
+        except DatabaseError:
+            # Table missing or DB unavailable — login page still works without slides
+            return Response([])
+ 
+ 
+# ── Admin endpoints (authentication required) ─────────────────────────────────
+class SlideshowImageListCreateView(APIView):
+    """
+    GET  /api/v1/slideshow/          – list all images (admin)
+    POST /api/v1/slideshow/          – upload new image (admin)
+    """
+    permission_classes = [IsAdminOrSuperuser]
+    parser_classes     = [MultiPartParser, FormParser]
+ 
+    def get(self, request):
+        qs = LoginSlideshowImage.objects.all()
+        serializer = LoginSlideshowImageSerializer(
+            qs, many=True, context={'request': request}
+        )
+        return Response(serializer.data)
+ 
+    def post(self, request):
+        serializer = LoginSlideshowImageSerializer(
+            data=request.data, context={'request': request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+ 
+ 
+class SlideshowImageDetailView(APIView):
+    """
+    GET    /api/v1/slideshow/<pk>/   – retrieve one image (admin)
+    PATCH  /api/v1/slideshow/<pk>/   – update caption/order/is_active (admin)
+    DELETE /api/v1/slideshow/<pk>/   – delete image (admin)
+    """
+    permission_classes = [IsAdminOrSuperuser]
+    # JSON for PATCH from the SPA; multipart kept if you replace the image later
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
+ 
+    def _get_object(self, pk):
+        try:
+            return LoginSlideshowImage.objects.get(pk=pk)
+        except LoginSlideshowImage.DoesNotExist:
+            return None
+ 
+    def get(self, request, pk):
+        obj = self._get_object(pk)
+        if not obj:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = LoginSlideshowImageSerializer(obj, context={'request': request})
+        return Response(serializer.data)
+ 
+    def patch(self, request, pk):
+        obj = self._get_object(pk)
+        if not obj:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        serializer = LoginSlideshowImageSerializer(
+            obj, data=request.data, partial=True, context={'request': request}
+        )
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+ 
+    def delete(self, request, pk):
+        obj = self._get_object(pk)
+        if not obj:
+            return Response({'detail': 'Not found.'}, status=status.HTTP_404_NOT_FOUND)
+        # Also delete the file from Cloudinary
+        obj.image.delete(save=False)
+        obj.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+ 

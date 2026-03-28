@@ -215,6 +215,18 @@ CELERY_TASK_SOFT_TIME_LIMIT = 540
 # Compress large report blobs before storing them in Redis
 CELERY_RESULT_COMPRESSION   = "zlib"
 
+# Use a dedicated queue for background prewarming so user-triggered
+# report tasks are not blocked behind large prewarm batches, especially
+# on Windows where we run Celery with --pool=solo.
+CELERY_TASK_QUEUES = {
+    "celery":  {"exchange": "celery",  "routing_key": "celery"},
+    "prewarm": {"exchange": "prewarm", "routing_key": "prewarm"},
+}
+
+CELERY_TASK_ROUTES = {
+    "equipment.tasks.prewarm_*": {"queue": "prewarm", "routing_key": "prewarm"},
+}
+
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_BEAT_SCHEDULE = {
     # Prewarm once per hour — avoids starving user-triggered Celery tasks.
@@ -226,3 +238,9 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute=0, hour="*"),   # once per hour, on the hour
     },
 }
+
+# Report download links
+# Allows long-running report downloads to continue even after JWT expiry/logout
+# by using a time-limited signed token on the poll/download URL.
+REPORT_DOWNLOAD_TOKEN_MAX_AGE_SECONDS = int(os.getenv("REPORT_DOWNLOAD_TOKEN_MAX_AGE_SECONDS", str(60 * 60 * 24)))  # 24h
+REPORT_DOWNLOAD_TOKEN_SALT = os.getenv("REPORT_DOWNLOAD_TOKEN_SALT", "report-download-v1")

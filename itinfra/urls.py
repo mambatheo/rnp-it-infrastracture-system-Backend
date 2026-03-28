@@ -3,6 +3,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import RedirectView
+from accounts.urls import slideshow_urlpatterns
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
@@ -15,6 +16,7 @@ urlpatterns = [
 
     path('admin/', admin.site.urls),
     path('api/v1/accounts/', include('accounts.urls')),
+    path('api/v1/', include(slideshow_urlpatterns)),
     path('api/v1/equipment/', include('equipment.urls')),
    # path('api/v1/maintenance/', include('repairs.urls')),
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),

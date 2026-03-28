@@ -1,6 +1,8 @@
 import base64
 
+from django.conf import settings
 from django.core.cache import cache
+from django.core import signing
 from django.db.models import Count, Exists, OuterRef, Q
 from django.http import HttpResponse
 from django.utils import timezone
@@ -455,6 +457,38 @@ def _user_from_token_param(request):
         return None
 
 
+def _user_from_download_token_param(request):
+    """
+    Authenticate via ?dl_token= signed token.
+    This is intentionally independent of JWT so downloads can continue after access-token expiry/logout.
+    """
+    token = request.query_params.get("dl_token")
+    if not token:
+        return None
+    try:
+        payload = signing.loads(
+            token,
+            salt=getattr(settings, "REPORT_DOWNLOAD_TOKEN_SALT", "report-download-v1"),
+            max_age=getattr(settings, "REPORT_DOWNLOAD_TOKEN_MAX_AGE_SECONDS", 60 * 60 * 24),
+        )
+    except Exception:
+        return None
+
+    req_task_id = request.query_params.get("task_id")
+    if not req_task_id or payload.get("task_id") != req_task_id:
+        return None
+
+    uid = payload.get("uid")
+    if not uid:
+        return None
+    try:
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        return User.objects.get(id=uid)
+    except Exception:
+        return None
+
+
 class _ReportBaseView(APIView):
     authentication_classes = [JWTAuthentication]
     permission_classes      = [permissions.IsAuthenticated]
@@ -463,6 +497,10 @@ class _ReportBaseView(APIView):
         try:
             super().initial(request, *args, **kwargs)
         except Exception:
+            user = _user_from_download_token_param(request)
+            if user and user.is_active:
+                request.user = user
+                return
             user = _user_from_token_param(request)
             if not user or not user.is_active:
                 raise AuthenticationFailed("Valid authentication token required.")
@@ -475,14 +513,27 @@ PDF_CT  = "application/pdf"
 
 def _enqueue(task_fn, *args):
     result = task_fn.delay(*args)
-    return Response({"task_id": result.id, "status": "PENDING"}, status=202)
+    return result.id
 
 
 def _poll_or_download(request, task_id, filename, content_type):
     result = AsyncResult(task_id)
 
-    if result.state in ("PENDING", "STARTED", "RETRY"):
-        return Response({"task_id": task_id, "status": result.state}, status=202)
+    if result.state in ("PENDING", "STARTED", "RETRY", "PROGRESS"):
+        meta = result.info or {}
+        current = meta.get("current")
+        total   = meta.get("total")
+        progress = None
+        try:
+            if current is not None and total:
+                progress = int(current * 100 / total)
+        except Exception:
+            progress = None
+
+        payload = {"task_id": task_id, "status": result.state}
+        if progress is not None:
+            payload["progress"] = progress
+        return Response(payload, status=202)
 
     if result.state == "FAILURE":
         return Response(
@@ -495,6 +546,25 @@ def _poll_or_download(request, task_id, filename, content_type):
     resp["Content-Disposition"] = f'attachment; filename="{filename}"'
     result.forget()
     return resp
+
+
+def _enqueue_response(request, task_fn, *args):
+    task_id = _enqueue(task_fn, *args)
+    uid = getattr(request.user, "id", None)
+    if uid is not None:
+        uid = str(uid)  # UUID -> JSON-safe
+    dl_token = signing.dumps(
+        {"uid": uid, "task_id": task_id},
+        salt=getattr(settings, "REPORT_DOWNLOAD_TOKEN_SALT", "report-download-v1"),
+    )
+    return Response(
+        {
+            "task_id": task_id,
+            "status": "PENDING",
+            "download_token": dl_token,
+        },
+        status=202,
+    )
 
 
 # ── Equipment reports ─────────────────────────────────────────────────────────
@@ -510,8 +580,8 @@ class EquipmentExcelReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, XLSX_CT)
         if equipment_type:
-            return _enqueue(task_excel_by_type, equipment_type)
-        return _enqueue(task_excel_all)
+            return _enqueue_response(request, task_excel_by_type, equipment_type)
+        return _enqueue_response(request, task_excel_all)
 
 
 @extend_schema(tags=["Reports"])
@@ -525,8 +595,8 @@ class EquipmentPDFReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, PDF_CT)
         if equipment_type:
-            return _enqueue(task_pdf_by_type, equipment_type)
-        return _enqueue(task_pdf_all)
+            return _enqueue_response(request, task_pdf_by_type, equipment_type)
+        return _enqueue_response(request, task_pdf_all)
 
 
 # ── Stock reports ─────────────────────────────────────────────────────────────
@@ -542,8 +612,8 @@ class StockExcelReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, XLSX_CT)
         if equipment_type:
-            return _enqueue(task_stock_excel_by_type, equipment_type)
-        return _enqueue(task_stock_excel_all)
+            return _enqueue_response(request, task_stock_excel_by_type, equipment_type)
+        return _enqueue_response(request, task_stock_excel_all)
 
 
 @extend_schema(tags=["Reports"])
@@ -557,8 +627,8 @@ class StockPDFReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, PDF_CT)
         if equipment_type:
-            return _enqueue(task_stock_pdf_by_type, equipment_type)
-        return _enqueue(task_stock_pdf_all)
+            return _enqueue_response(request, task_stock_pdf_by_type, equipment_type)
+        return _enqueue_response(request, task_stock_pdf_all)
 
 
 # ── Unit reports ──────────────────────────────────────────────────────────────
@@ -573,8 +643,8 @@ class UnitExcelReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, XLSX_CT)
         if unit_id:
-            return _enqueue(task_unit_excel_by_unit, str(unit_id))
-        return _enqueue(task_unit_excel_all)
+            return _enqueue_response(request, task_unit_excel_by_unit, str(unit_id))
+        return _enqueue_response(request, task_unit_excel_all)
 
 
 @extend_schema(tags=["Reports"])
@@ -587,8 +657,8 @@ class UnitPDFReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, PDF_CT)
         if unit_id:
-            return _enqueue(task_unit_pdf_by_unit, str(unit_id))
-        return _enqueue(task_unit_pdf_all)
+            return _enqueue_response(request, task_unit_pdf_by_unit, str(unit_id))
+        return _enqueue_response(request, task_unit_pdf_all)
 
 
 # ── Region reports ────────────────────────────────────────────────────────────
@@ -603,8 +673,8 @@ class RegionExcelReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, XLSX_CT)
         if region_id:
-            return _enqueue(task_region_excel_by_region, str(region_id))
-        return _enqueue(task_region_excel_all)
+            return _enqueue_response(request, task_region_excel_by_region, str(region_id))
+        return _enqueue_response(request, task_region_excel_all)
 
 
 @extend_schema(tags=["Reports"])
@@ -617,8 +687,8 @@ class RegionPDFReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, PDF_CT)
         if region_id:
-            return _enqueue(task_region_pdf_by_region, str(region_id))
-        return _enqueue(task_region_pdf_all)
+            return _enqueue_response(request, task_region_pdf_by_region, str(region_id))
+        return _enqueue_response(request, task_region_pdf_all)
 
 
 # ── DPU reports ───────────────────────────────────────────────────────────────
@@ -633,8 +703,8 @@ class DPUExcelReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, XLSX_CT)
         if dpu_id:
-            return _enqueue(task_dpu_excel_by_dpu, str(dpu_id))
-        return _enqueue(task_dpu_excel_all)
+            return _enqueue_response(request, task_dpu_excel_by_dpu, str(dpu_id))
+        return _enqueue_response(request, task_dpu_excel_all)
 
 
 @extend_schema(tags=["Reports"])
@@ -647,8 +717,8 @@ class DPUPDFReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, PDF_CT)
         if dpu_id:
-            return _enqueue(task_dpu_pdf_by_dpu, str(dpu_id))
-        return _enqueue(task_dpu_pdf_all)
+            return _enqueue_response(request, task_dpu_pdf_by_dpu, str(dpu_id))
+        return _enqueue_response(request, task_dpu_pdf_all)
 
 
 # ═════════════════════════════════════════════════════════════════

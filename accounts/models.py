@@ -105,3 +105,23 @@ class User(AbstractBaseUser, PermissionsMixin):
 
     def __str__(self):
         return f"{self.email} - {self.get_full_name()}"
+    
+    
+class LoginSlideshowImage(models.Model):
+    """Images displayed in the login page background slideshow."""
+    
+    id = models.UUIDField(default=uuid.uuid4, primary_key=True, editable=False)
+    image       = models.ImageField(upload_to='slideshow/')   # stored in Cloudinary
+    caption     = models.CharField(max_length=200, blank=True)
+    order       = models.PositiveIntegerField(default=0, help_text="Display order (lower = first)")
+    is_active   = models.BooleanField(default=True)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['order', 'uploaded_at']
+        verbose_name        = 'Login Slideshow Image'
+        verbose_name_plural = 'Login Slideshow Images'
+
+    def __str__(self):
+        return f"Slide {self.order} – {self.caption or self.image.name}"
