@@ -455,7 +455,7 @@ def _xl_write_header(ws, fmt, report_title, n_cols):
     ws.merge_range(0, title_col, 0, n_cols - 1, SYSTEM_NAME,     fmt["sys_name"])
     ws.merge_range(1, title_col, 1, n_cols - 1, report_title,    fmt["report_title"])
     ws.merge_range(2, title_col, 2, n_cols - 1,
-        f"Generated: {timezone.now().strftime('%d %B %Y')}", fmt["date_line"])
+        f"Generated: {timezone.now().strftime('%d %B %Y at %H:%M')}", fmt["date_line"])
     return 4
 
 
@@ -576,7 +576,13 @@ def _write_stock_sheet(wb, fmt, sheet_title, equipment_type=None):
             row += 1
 
 
-def _write_unit_sheet(wb, fmt, unit_name, extra_filter):
+def _write_unit_sheet(wb, fmt, unit_name, extra_filter, report_label=None):
+    """
+    Write a location-scoped sheet (Unit / Region / DPU).
+    The sheet starts with the same header block used by all other Excel
+    reports (logo + system name + report title + timestamp), followed by
+    the location-name banner and the per-equipment-type sections.
+    """
     n_cols = len(UNIT_FIELDS)
     ws     = wb.add_worksheet(_safe_sheet_name(unit_name))
     ws.set_landscape()
@@ -587,11 +593,19 @@ def _write_unit_sheet(wb, fmt, unit_name, extra_filter):
     for col_idx, w in enumerate(UNIT_COL_WIDTHS_XL):
         ws.set_column(col_idx, col_idx, w)
 
-    ws.set_row(0, 30)
-    ws.set_row(1, 10)
-    ws.merge_range(0, 0, 1, n_cols - 1, unit_name.upper(), fmt["banner"])
+    # ── standard header block: logo / system name / report title / timestamp ──
+    report_title = report_label or f"{unit_name} — Equipment Report"
+    row = _xl_write_header(ws, fmt, report_title, n_cols)
 
-    row         = 2
+    # ── location name banner ──────────────────────────────────────────────────
+    ws.set_row(row, 22)
+    ws.merge_range(row, 0, row, n_cols - 1, unit_name.upper(), fmt["banner"])
+    row += 1
+
+    # thin spacer before sections
+    ws.set_row(row, 4)
+    row += 1
+
     section_num = 0
 
     for eq_type in _TYPE_ORDER:
@@ -622,7 +636,7 @@ def _write_unit_sheet(wb, fmt, unit_name, extra_filter):
                 ws.write(row, col_idx, val, f)
             row += 1
 
-        row += 1  # spacer
+        row += 1  # spacer between sections
 
 
 def _write_summary_sheet(wb, fmt, title, col_a_label, rows_data, grand_total):

@@ -6,7 +6,10 @@ from django.utils import timezone
 from .models import Deployment, Equipment, Stock
 
 
+# ─── helpers ────────────────────────────────────────────────────────────────
+
 def _invalidate_equipment_caches(instance):
+    """Delete stale report cache keys then schedule background regeneration."""
     keys_to_delete = [
         "report:pdf:equipment:all",
         "report:xlsx:equipment:all",
@@ -18,33 +21,115 @@ def _invalidate_equipment_caches(instance):
         "report:xlsx:dpu:all",
     ]
 
+    type_name  = None
+    unit_id    = instance.unit_id
+    region_id  = instance.region_id
+    dpu_id     = instance.dpu_id
+
     if instance.equipment_type:
         type_name = instance.equipment_type.name.lower()
         keys_to_delete += [
             f"report:pdf:equipment:{type_name}",
             f"report:xlsx:equipment:{type_name}",
         ]
-    if instance.unit_id:
-        keys_to_delete += [f"report:pdf:unit:{instance.unit_id}", f"report:xlsx:unit:{instance.unit_id}"]
-    if instance.region_id:
-        keys_to_delete += [f"report:pdf:region:{instance.region_id}", f"report:xlsx:region:{instance.region_id}"]
-    if instance.dpu_id:
-        keys_to_delete += [f"report:pdf:dpu:{instance.dpu_id}", f"report:xlsx:dpu:{instance.dpu_id}"]
+    if unit_id:
+        keys_to_delete += [f"report:pdf:unit:{unit_id}", f"report:xlsx:unit:{unit_id}"]
+    if region_id:
+        keys_to_delete += [f"report:pdf:region:{region_id}", f"report:xlsx:region:{region_id}"]
+    if dpu_id:
+        keys_to_delete += [f"report:pdf:dpu:{dpu_id}", f"report:xlsx:dpu:{dpu_id}"]
 
     cache.delete_many(keys_to_delete)
 
+    # ── kick off background regeneration so the next download is instant ──
+    _schedule_equipment_regen(type_name, unit_id, region_id, dpu_id)
+
 
 def _invalidate_stock_caches(stock_instance):
+    """Delete stale stock cache keys then schedule background regeneration."""
     keys = [
         "report:pdf:stock:all",
         "report:xlsx:stock:all",
     ]
+    type_name = None
     equipment = getattr(stock_instance, "equipment", None)
     if equipment and equipment.equipment_type:
         type_name = equipment.equipment_type.name.lower()
         keys += [f"report:pdf:stock:{type_name}", f"report:xlsx:stock:{type_name}"]
     cache.delete_many(keys)
+    _schedule_stock_regen(type_name)
 
+
+def _schedule_equipment_regen(type_name, unit_id, region_id, dpu_id):
+    """
+    Queue background Celery tasks to rebuild only the invalidated reports.
+    Import tasks here (not at module level) to avoid circular imports.
+    countdown=5 gives Django a moment to finish the DB write before reading.
+    """
+    try:
+        from .tasks import (
+            task_excel_all, task_pdf_all,
+            task_excel_by_type, task_pdf_by_type,
+            task_unit_excel_all, task_unit_pdf_all,
+            task_unit_excel_by_unit, task_unit_pdf_by_unit,
+            task_region_excel_all, task_region_pdf_all,
+            task_region_excel_by_region, task_region_pdf_by_region,
+            task_dpu_excel_all, task_dpu_pdf_all,
+            task_dpu_excel_by_dpu, task_dpu_pdf_by_dpu,
+        )
+        DELAY = 5  # seconds — let the DB commit settle first
+
+        # Always regenerate the "all equipment" aggregates
+        task_excel_all.apply_async(countdown=DELAY)
+        task_pdf_all.apply_async(countdown=DELAY)
+
+        # Per-type report (if this equipment has a type)
+        if type_name:
+            task_excel_by_type.apply_async(args=[type_name], countdown=DELAY)
+            task_pdf_by_type.apply_async(args=[type_name], countdown=DELAY)
+
+        # Per-location aggregates + specific sheets
+        if unit_id:
+            task_unit_excel_all.apply_async(countdown=DELAY)
+            task_unit_pdf_all.apply_async(countdown=DELAY)
+            task_unit_excel_by_unit.apply_async(args=[unit_id], countdown=DELAY)
+            task_unit_pdf_by_unit.apply_async(args=[unit_id], countdown=DELAY)
+
+        if region_id:
+            task_region_excel_all.apply_async(countdown=DELAY)
+            task_region_pdf_all.apply_async(countdown=DELAY)
+            task_region_excel_by_region.apply_async(args=[region_id], countdown=DELAY)
+            task_region_pdf_by_region.apply_async(args=[region_id], countdown=DELAY)
+
+        if dpu_id:
+            task_dpu_excel_all.apply_async(countdown=DELAY)
+            task_dpu_pdf_all.apply_async(countdown=DELAY)
+            task_dpu_excel_by_dpu.apply_async(args=[dpu_id], countdown=DELAY)
+            task_dpu_pdf_by_dpu.apply_async(args=[dpu_id], countdown=DELAY)
+
+    except Exception as e:
+        # Never crash the request because of background scheduling
+        print(f"[signals] background regen scheduling failed: {e}")
+
+
+def _schedule_stock_regen(type_name):
+    """Queue background tasks to rebuild invalidated stock reports."""
+    try:
+        from .tasks import (
+            task_stock_excel_all, task_stock_pdf_all,
+            task_stock_excel_by_type, task_stock_pdf_by_type,
+        )
+        DELAY = 5
+        task_stock_excel_all.apply_async(countdown=DELAY)
+        task_stock_pdf_all.apply_async(countdown=DELAY)
+        if type_name:
+            task_stock_excel_by_type.apply_async(args=[type_name], countdown=DELAY)
+            task_stock_pdf_by_type.apply_async(args=[type_name], countdown=DELAY)
+    except Exception as e:
+        print(f"[signals] stock regen scheduling failed: {e}")
+
+
+# ─── signal receivers ────────────────────────────────────────────────────────
 
 @receiver(post_save, sender=Equipment)
 def auto_classify_equipment(sender, instance, created, **kwargs):
