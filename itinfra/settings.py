@@ -71,16 +71,17 @@ TEMPLATES = [
 WSGI_APPLICATION = 'itinfra.wsgi.application'
 
 DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql',
-            'NAME': os.getenv("DEV_DB_NAME"),
-            'USER': os.getenv("DEV_DB_USER"),
-            'PASSWORD': os.getenv("DEV_DB_PASSWORD"),
-            'HOST': os.getenv("DB_HOST"),
-            'PORT': os.getenv("DB_PORT"),
-          
-        }
+    'default': {
+        'ENGINE':   'django.db.backends.postgresql',
+        'NAME':     os.getenv("POSTGRES_DB",       'itinfra'),
+        'USER':     os.getenv("POSTGRES_USER",     'itinfra'),
+        'PASSWORD': os.getenv("POSTGRES_PASSWORD", ''),
+        'HOST':     os.getenv("DB_HOST",           'db'),
+        'PORT':     os.getenv("DB_PORT",           '5432'),
     }
+}
+
+
 
 
    
