@@ -70,17 +70,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'itinfra.wsgi.application'
 
-if os.getenv("DATABASE_URL"):
-    DATABASES = {
-        'default': dj_database_url.config(
-            default=os.getenv("DATABASE_URL"),
-            conn_max_age=600,
-            conn_health_checks=True,
-            ssl_require=True,
-        )
-    }
-else:
-    DATABASES = {
+DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql',
             'NAME': os.getenv("DEV_DB_NAME"),
@@ -88,12 +78,12 @@ else:
             'PASSWORD': os.getenv("DEV_DB_PASSWORD"),
             'HOST': os.getenv("localhost"),
             'PORT': os.getenv("port"),
-            # 'OPTIONS': {
-            #      'sslmode': 'require',
-            # },
-            #  'CONN_MAX_AGE': 600,
+          
         }
     }
+
+
+   
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -117,22 +107,18 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 AUTH_USER_MODEL = 'accounts.User'
 
 STORAGES = {
+    # Always use the local filesystem — no cloud storage dependency.
+    # In Docker, MEDIA_ROOT is backed by a named volume for persistence.
     "default": {
-        "BACKEND": "cloudinary_storage.storage.MediaCloudinaryStorage"
-        if not DEBUG else
-        "django.core.files.storage.FileSystemStorage",
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
     "staticfiles": {
         "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
     },
 }
 
-CLOUDINARY_STORAGE = {
-    'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
-    'API_KEY':    os.getenv('CLOUDINARY_API_KEY'),
-    'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
-}
-
+# ── No cloud storage — all files saved to local filesystem ────────────────
+# Media files persist via the Docker named volume (media_data).
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 SIMPLE_JWT = {
@@ -209,15 +195,13 @@ CELERY_RESULT_BACKEND     = REDIS_RESULT_URL
 CELERY_ACCEPT_CONTENT     = ["json"]
 CELERY_TASK_SERIALIZER    = "json"
 CELERY_RESULT_SERIALIZER  = "json"
-CELERY_RESULT_EXPIRES       = 60 * 30   # drop results after 30 min (was 1 hour)
+CELERY_RESULT_EXPIRES       = 60 * 30   
 CELERY_TASK_TIME_LIMIT      = 600
 CELERY_TASK_SOFT_TIME_LIMIT = 540
 # Compress large report blobs before storing them in Redis
 CELERY_RESULT_COMPRESSION   = "zlib"
 
-# Use a dedicated queue for background prewarming so user-triggered
-# report tasks are not blocked behind large prewarm batches, especially
-# on Windows where we run Celery with --pool=solo.
+
 CELERY_TASK_QUEUES = {
     "celery":  {"exchange": "celery",  "routing_key": "celery"},
     "prewarm": {"exchange": "prewarm", "routing_key": "prewarm"},
@@ -229,19 +213,13 @@ CELERY_TASK_ROUTES = {
 
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_BEAT_SCHEDULE = {
-    # Prewarm every 20 minutes.
-    # This guarantees that even if a data-change signal fails to trigger
-    # a background regen, cached reports are never more than 20 minutes
-    # stale. The 30-min cache TTL is intentionally longer than this interval
-    # so reports are always hot when users download them.
+  
     "prewarm-all-reports": {
         "task": "equipment.tasks.prewarm_all_reports",
         "schedule": crontab(minute="*/20"),   # :00, :20, :40 of every hour
     },
 }
 
-# Report download links
-# Allows long-running report downloads to continue even after JWT expiry/logout
-# by using a time-limited signed token on the poll/download URL.
+
 REPORT_DOWNLOAD_TOKEN_MAX_AGE_SECONDS = int(os.getenv("REPORT_DOWNLOAD_TOKEN_MAX_AGE_SECONDS", str(60 * 60 * 24)))  # 24h
 REPORT_DOWNLOAD_TOKEN_SALT = os.getenv("REPORT_DOWNLOAD_TOKEN_SALT", "report-download-v1")
