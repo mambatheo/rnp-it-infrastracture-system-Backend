@@ -65,6 +65,9 @@ RUN SECRET_KEY=docker-build-only-dummy-key \
     DATABASE_URL=sqlite:////tmp/build.db \
     python manage.py collectstatic --noinput --clear
 
+# Ensure media directory exists and is writable by the django user
+RUN mkdir -p /app/media && chown -R django:django /app/media
+
 USER django
 
 ENV GUNICORN_BIND=0.0.0.0:8000 \
