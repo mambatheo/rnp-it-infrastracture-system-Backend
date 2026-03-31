@@ -13,7 +13,11 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")  
+ALLOWED_HOSTS = [
+    h.strip().replace("https://", "").replace("http://", "").rstrip("/")
+    for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if h.strip()
+]  
 INSTALLED_APPS = [
     'admin_interface',
     'colorfield',
