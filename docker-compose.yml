@@ -5,13 +5,13 @@ x-backend-env: &backend-env
   env_file: .env
   environment:
     POSTGRES_DB:       ${POSTGRES_DB:-itinfra}
-    DB_HOST:            db
-    DB_PORT:             "5432"      
     POSTGRES_USER:     ${POSTGRES_USER:-postgres}
-    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}   
-    REDIS_BROKER_URL:      redis://redis:6379/0
-    REDIS_RESULT_URL:      redis://redis:6379/1
-    REDIS_CACHE_URL:       redis://redis:6379/2
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Theo@1234!} # Matches your secret
+    DB_HOST:            db
+    DB_PORT:            "5432"      
+    REDIS_BROKER_URL:   redis://redis:6379/0
+    REDIS_RESULT_URL:   redis://redis:6379/1
+    REDIS_CACHE_URL:    redis://redis:6379/2
     DJANGO_SETTINGS_MODULE: itinfra.settings
     DEBUG: "False"
 
@@ -25,7 +25,7 @@ services:
     environment:
       POSTGRES_DB:       ${POSTGRES_DB:-itinfra}
       POSTGRES_USER:     ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Theo@1234!}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
