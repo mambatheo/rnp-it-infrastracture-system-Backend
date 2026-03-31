@@ -31,7 +31,6 @@ Thumbs.db
 .idea/
 
 # Docker
-Dockerfile
 .dockerignore
 #migration files
 **/migrations/*
