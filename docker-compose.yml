@@ -6,7 +6,7 @@ x-backend-env: &backend-env
   environment:
     POSTGRES_DB:       ${POSTGRES_DB:-itinfra}
     POSTGRES_USER:     ${POSTGRES_USER:-postgres}
-    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Theo@1234!} # Matches your secret
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Theo@1234!}
     DB_HOST:            db
     DB_PORT:            "5432"      
     REDIS_BROKER_URL:   redis://redis:6379/0
@@ -29,12 +29,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-itinfra}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── Redis (broker + cache + results) ────────────────────────────────────────
+  # ── Redis ───────────────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
     restart: unless-stopped
@@ -50,7 +50,7 @@ services:
   # ── Django + Gunicorn ────────────────────────────────────────────────────────
   web:
     build:
-      context: .          # backend repo root
+      context: .
       dockerfile: Dockerfile
     restart: unless-stopped
     <<: *backend-env
@@ -62,6 +62,7 @@ services:
     expose:
       - "8000"
     volumes:
+      - .:/app
       - media_data:/app/media
 
   # ── Celery Worker ────────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
+      - .:/app
       - media_data:/app/media
     command: >
       celery -A itinfra worker
@@ -85,7 +87,7 @@ services:
       --pool=prefork
       --concurrency=4
 
-  # ── Celery Beat (scheduler — only ONE instance ever) ─────────────────────────
+  # ── Celery Beat ──────────────────────────────────────────────────────────────
   beat:
     build:
       context: .
@@ -97,33 +99,29 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    volumes:
+      - .:/app
     command: >
       celery -A itinfra beat
       -l info
       --scheduler django_celery_beat.schedulers:DatabaseScheduler
 
   # ── Nginx + React Frontend ────────────────────────────────────────────────────
-  # Build context points to the frontend repo cloned as a sibling directory.
-  # Server layout expected:
-  #   /opt/itinfra/backend/   ← this repo (docker-compose.yml lives here)
-  #   /opt/itinfra/frontend/  ← frontend repo (only Dockerfile needed there)
   nginx:
     build:
-      context: ../frontend    # ← sibling frontend repo directory
+      context: ../frontend
       dockerfile: Dockerfile
       args:
-        # Must match your server IP or domain — baked into the React bundle
         REACT_APP_API_URL: ${REACT_APP_API_URL:-http://itinfra-server}
     restart: unless-stopped
     depends_on:
       - web
     volumes:
-      # Reuse the existing nginx.conf from this backend repo — no duplicate needed
       - ./docker/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - "80:80"
 
 volumes:
-  postgres_data:   # PostgreSQL — never delete this volume
-  redis_data:      # Redis persistence
-  media_data:      # Uploaded media files (local, no cloud)
+  postgres_data:
+  redis_data:
+  media_data:
