@@ -359,13 +359,19 @@ def _make_formats(wb):
         "font_color": "#FFFFFF", "bg_color": ACCENT,
         "align": "center", "valign": "vcenter",
     })
-    f["sys_name"] = wb.add_format({
-        "bold": True, "font_name": "Tahoma", "font_size": 14,
-        "font_color": DARK_BLUE, "align": "right", "valign": "vcenter",
+    # Header block (match PDF layout)
+    f["sys_name_left"] = wb.add_format({
+        "bold": True, "font_name": "Tahoma", "font_size": 11,
+        "font_color": DARK_BLUE, "align": "left", "valign": "vcenter",
     })
-    f["report_title"] = wb.add_format({
-        "font_name": "Tahoma", "font_size": 12,
-        "font_color": ACCENT, "align": "right", "valign": "vcenter",
+    f["report_title_center"] = wb.add_format({
+        "bold": True, "font_name": "Tahoma", "font_size": 14,
+        "font_color": ACCENT, "align": "center", "valign": "vcenter",
+    })
+    f["divider"] = wb.add_format({
+        "bg_color": WHITE,
+        "bottom": 3,
+        "bottom_color": ACCENT,
     })
     f["date_line"] = wb.add_format({
         "italic": True, "font_name": "Tahoma", "font_size": 10,
@@ -417,14 +423,15 @@ def _xl_logo_options():
     size of 64×64 px and use object_position=3 (don't move or size with cells)
     to prevent the image from pushing rows around.
     """
-    TARGET_PX = 64          # desired rendered size in screen-pixels (≈ 96 DPI)
-    DEFAULT_SCALE = 0.07    # safe fallback when image dimensions are unknown
+    # Keep it small enough to fit within the header rows without overlapping text.
+    TARGET_PX = 48          # desired rendered size in screen-pixels (≈ 96 DPI)
+    DEFAULT_SCALE = 0.055   # safe fallback when image dimensions are unknown
 
     size = _png_size(LOGO_PATH)
     if not size:
         return {
             "x_scale": DEFAULT_SCALE, "y_scale": DEFAULT_SCALE,
-            "x_offset": 4, "y_offset": 4,
+            "x_offset": 2, "y_offset": 2,
             "object_position": 3,
         }
 
@@ -432,30 +439,56 @@ def _xl_logo_options():
     if width <= 0 or height <= 0:
         return {
             "x_scale": DEFAULT_SCALE, "y_scale": DEFAULT_SCALE,
-            "x_offset": 4, "y_offset": 4,
+            "x_offset": 2, "y_offset": 2,
             "object_position": 3,
         }
 
     scale = min(TARGET_PX / width, TARGET_PX / height, 1.0)
     return {
         "x_scale": scale, "y_scale": scale,
-        "x_offset": 4, "y_offset": 4,
+        "x_offset": 2, "y_offset": 2,
         "object_position": 3,
     }
 
 
 def _xl_write_header(ws, fmt, report_title, n_cols):
-    ws.set_row(0, 80)
-    ws.set_row(1, 22)
-    ws.set_row(2, 18)
+    """
+    Excel header styled to mirror the PDF:
+    - Logo top-left
+    - System name below/near logo on the left
+    - Report title centered on the top row
+    - Blue divider line under the header block
+    - Generated timestamp in the print footer (bottom-right)
+    """
+    # Header block:
+    # Row 0: logo (left) + report title (center/right)
+    # Row 1: system name (below logo, its own row)
+    # Row 2: divider line
+    # Row 3: spacer
+    ws.set_row(0, 40)
+    ws.set_row(1, 20)
+    ws.set_row(2, 6)
     ws.set_row(3, 6)
+
     if os.path.exists(LOGO_PATH):
         ws.insert_image(0, 0, LOGO_PATH, _xl_logo_options())
-    title_col = max(1, n_cols // 2)
-    ws.merge_range(0, title_col, 0, n_cols - 1, SYSTEM_NAME,     fmt["sys_name"])
-    ws.merge_range(1, title_col, 1, n_cols - 1, report_title,    fmt["report_title"])
-    ws.merge_range(2, title_col, 2, n_cols - 1,
-        f"Generated: {timezone.now().strftime('%d %B %Y at %H:%M')}", fmt["date_line"])
+
+    # Report title on row 0 (keeps header compact and matches PDF intent)
+    ws.merge_range(0, 0, 0, n_cols - 1, report_title, fmt["report_title_center"])
+
+    # System name below the logo, on its own row.
+    # Start at column A so its left edge aligns with the logo's left edge.
+    sys_start = 0
+    sys_end   = min(3, max(0, n_cols - 1))
+    ws.merge_range(1, sys_start, 1, sys_end, SYSTEM_NAME or "", fmt["sys_name_left"])
+
+    # Print footer (bottom-right) timestamp like the PDF footer.
+    # '&R' = right section of footer in Excel.
+    ws.set_footer(f"&RGenerated: {timezone.now().strftime('%d %B %Y at %H:%M')}")
+
+    # Divider line (blue underline across the table width)
+    ws.merge_range(2, 0, 2, n_cols - 1, "", fmt["divider"])
+
     return 4
 
 

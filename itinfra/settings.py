@@ -229,13 +229,14 @@ CELERY_TASK_ROUTES = {
 
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_BEAT_SCHEDULE = {
-    # Prewarm once per hour — avoids starving user-triggered Celery tasks.
-    # The duplicate 'every-25-min' and 'startup-window' schedules have been
-    # removed; they caused workers to spend most of their time regenerating
-    # reports and left no capacity for on-demand requests.
+    # Prewarm every 20 minutes.
+    # This guarantees that even if a data-change signal fails to trigger
+    # a background regen, cached reports are never more than 20 minutes
+    # stale. The 30-min cache TTL is intentionally longer than this interval
+    # so reports are always hot when users download them.
     "prewarm-all-reports": {
         "task": "equipment.tasks.prewarm_all_reports",
-        "schedule": crontab(minute=0, hour="*"),   # once per hour, on the hour
+        "schedule": crontab(minute="*/20"),   # :00, :20, :40 of every hour
     },
 }
 
