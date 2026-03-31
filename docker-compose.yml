@@ -4,7 +4,11 @@ version: "3.9"
 x-backend-env: &backend-env
   env_file: .env
   environment:
-    DATABASE_URL:          ${DATABASE_URL:-postgresql://itinfra:changeme@db:5432/itinfra}
+    POSTGRES_DB:       ${POSTGRES_DB:-itinfra}
+    DB_HOST:            db
+    DB_PORT:             "5432"      
+    POSTGRES_USER:     ${POSTGRES_USER:-itinfra}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}   
     REDIS_BROKER_URL:      redis://redis:6379/0
     REDIS_RESULT_URL:      redis://redis:6379/1
     REDIS_CACHE_URL:       redis://redis:6379/2
@@ -109,7 +113,7 @@ services:
       dockerfile: Dockerfile
       args:
         # Must match your server IP or domain — baked into the React bundle
-        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://localhost}
+        REACT_APP_API_URL: ${REACT_APP_API_URL:-http://itinfra-server}
     restart: unless-stopped
     depends_on:
       - web
