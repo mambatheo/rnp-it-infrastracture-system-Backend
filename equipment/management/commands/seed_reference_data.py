@@ -20,6 +20,7 @@ from equipment.models import (
     RegionOffice, Region,
     DPUOffice, DPU, Station,
     Unit, Directorate, Department, Office,
+    Equipment, Stock, Deployment, Lending,
 )
 
 
@@ -103,183 +104,189 @@ CATEGORIES_AND_BRANDS = {
 # ── Geography ──────────────────────────────────────────────────────────────────
 # Rwanda-realistic structure: region offices → regions → DPU offices → DPUs → stations
 
-GEOGRAPHY = {
-    "Kigali City Regional Office": {
-        "regions": {
-            "Nyarugenge": {
-                "dpu_office": "Nyarugenge DPU Office",
-                "dpus": {
-                    "Nyarugenge DPU": ["Gitega Station", "Nyamirambo Station", "Kimisagara Station"],
-                    "Kiyovu DPU":     ["Kiyovu Station", "Biryogo Station"],
-                },
-            },
-            "Gasabo": {
-                "dpu_office": "Gasabo DPU Office",
-                "dpus": {
-                    "Gasabo DPU":    ["Kimironko Station", "Remera Station", "Gisozi Station"],
-                    "Kacyiru DPU":   ["Kacyiru Station", "Kibagabaga Station"],
-                },
-            },
-            "Kicukiro": {
-                "dpu_office": "Kicukiro DPU Office",
-                "dpus": {
-                    "Kicukiro DPU":  ["Gatenga Station", "Niboye Station", "Kagarama Station"],
-                    "Gikondo DPU":   ["Gikondo Station", "Masaka Station"],
-                },
-            },
-        }
-    },
-    "Northern Regional Office": {
-        "regions": {
-            "Musanze": {
-                "dpu_office": "Musanze DPU Office",
-                "dpus": {
-                    "Musanze DPU":   ["Muhoza Station", "Kinigi Station"],
-                    "Cyuve DPU":     ["Cyuve Station"],
-                },
-            },
-            "Rulindo": {
-                "dpu_office": "Rulindo DPU Office",
-                "dpus": {
-                    "Rulindo DPU":   ["Base Station", "Buyoga Station"],
-                },
-            },
-            "Gakenke": {
-                "dpu_office": "Gakenke DPU Office",
-                "dpus": {
-                    "Gakenke DPU":   ["Gakenke Station", "Coko Station"],
-                },
-            },
-        }
-    },
-    "Southern Regional Office": {
-        "regions": {
-            "Huye": {
-                "dpu_office": "Huye DPU Office",
-                "dpus": {
-                    "Huye DPU":      ["Ngoma Station", "Tumba Station"],
-                    "Mbazi DPU":     ["Mbazi Station"],
-                },
-            },
-            "Nyanza": {
-                "dpu_office": "Nyanza DPU Office",
-                "dpus": {
-                    "Nyanza DPU":    ["Nyanza Station", "Busasamana Station"],
-                },
-            },
-            "Muhanga": {
-                "dpu_office": "Muhanga DPU Office",
-                "dpus": {
-                    "Muhanga DPU":   ["Shyogwe Station", "Rongi Station"],
-                },
-            },
-        }
-    },
-    "Eastern Regional Office": {
-        "regions": {
-            "Rwamagana": {
-                "dpu_office": "Rwamagana DPU Office",
-                "dpus": {
-                    "Rwamagana DPU": ["Rwamagana Station", "Fumbwe Station"],
-                },
-            },
-            "Kayonza": {
-                "dpu_office": "Kayonza DPU Office",
-                "dpus": {
-                    "Kayonza DPU":   ["Kabarondo Station", "Mukarange Station"],
-                },
-            },
-            "Kirehe": {
-                "dpu_office": "Kirehe DPU Office",
-                "dpus": {
-                    "Kirehe DPU":    ["Kirehe Station", "Nasho Station"],
-                },
-            },
-        }
-    },
-    "Western Regional Office": {
-        "regions": {
-            "Rubavu": {
-                "dpu_office": "Rubavu DPU Office",
-                "dpus": {
-                    "Rubavu DPU":    ["Gisenyi Station", "Nyundo Station"],
-                    "Rugerero DPU":  ["Rugerero Station"],
-                },
-            },
-            "Karongi": {
-                "dpu_office": "Karongi DPU Office",
-                "dpus": {
-                    "Karongi DPU":   ["Bwishyura Station", "Rugabano Station"],
-                },
-            },
-            "Rusizi": {
-                "dpu_office": "Rusizi DPU Office",
-                "dpus": {
-                    "Rusizi DPU":    ["Bugarama Station", "Gihundwe Station"],
-                },
-            },
-        }
-    },
+regions_dpus = {
+      # (DPU name, Region name)
+    ("Gasabo",      "Central Region"),
+    ("Nyarugenge",  "Central Region"),
+    ("Kicukiro",    "Central Region"),
+
+    ("Rwamagana",   "Eastern Region"),
+    ("Kayonza",     "Eastern Region"),
+    ("Gatsibo",     "Eastern Region"),
+    ("Bugesera",    "Eastern Region"),
+    ("Kirehe",      "Eastern Region"),
+    ("Ngoma",       "Eastern Region"),
+    ("Nyagatare",   "Eastern Region"),
+
+    ("Ruhango",     "Southern Region"),
+    ("Huye",        "Southern Region"),
+    ("Nyaruguru",   "Southern Region"),
+    ("Gisagara",    "Southern Region"),
+    ("Nyamagabe",   "Southern Region"),
+    ("Muhanga",     "Southern Region"),
+    ("Kamonyi",     "Southern Region"),
+    ("Nyanza",      "Southern Region"),
+
+    ("Rubavu",      "Western Region"),
+    ("Nyabihu",     "Western Region"),
+    ("Ngororero",   "Western Region"),
+    ("Rutsiro",     "Western Region"),
+    ("Karongi",     "Western Region"),
+    ("Nyamasheke",  "Western Region"),
+    ("Rusizi",      "Western Region"),
+
+    ("Gicumbi",     "Northern Region"),
+    ("Rulindo",     "Northern Region"),
+    ("Gakenke",     "Northern Region"),
+    ("Burera",      "Northern Region"),
+    ("Musanze",     "Northern Region"),
+
+
 }
+
+STATIONS = [
+    # Gasabo
+    ("Rutunga","Gasabo"),("Rusororo","Gasabo"),("Remera","Gasabo"),("Nduba","Gasabo"),
+    ("Ndera","Gasabo"),("Kinyinya","Gasabo"),("Kimironko","Gasabo"),("Kimihurura","Gasabo"),
+    ("Kacyiru","Gasabo"),("Jali","Gasabo"),("Jabana","Gasabo"),("Gisozi","Gasabo"),
+    ("Gikomero","Gasabo"),("Gatsata","Gasabo"),("Bumbogo","Gasabo"),
+    # Nyarugenge
+    ("Nyarugenge","Nyarugenge"),("Kigali","Nyarugenge"),("Rwezamenyo","Nyarugenge"),
+    ("Muhima","Nyarugenge"),("Kimisagara","Nyarugenge"),("Kanyinya","Nyarugenge"),
+    ("Mageragere","Nyarugenge"),
+    # Kicukiro
+    ("Gahanga","Kicukiro"),("Masaka","Kicukiro"),("Nyarugunga","Kicukiro"),
+    ("Kanombe","Kicukiro"),("Kicukiro","Kicukiro"),("Gikondo","Kicukiro"),("Kigarama","Kicukiro"),
+    # Rwamagana
+    ("Kigabiro","Rwamagana"),("Nzige","Rwamagana"),("Musha","Rwamagana"),
+    ("Muyumbu","Rwamagana"),("Karenge","Rwamagana"),("Gishari","Rwamagana"),
+    ("Rubona","Rwamagana"),("Fumbwe","Rwamagana"),
+    # Kayonza
+    ("Rukara","Kayonza"),("Mukarange","Kayonza"),("Kabarondo","Kayonza"),
+    ("Rwinkavu","Kayonza"),("Gahini","Kayonza"),("Nyamirama","Kayonza"),
+    ("Mwiri","Kayonza"),("Murundi","Kayonza"),("Ndego","Kayonza"),
+    # Gatsibo
+    ("Kabarore","Gatsibo"),("Kiramuruzi","Gatsibo"),("Ngarama","Gatsibo"),
+    ("Gatsibo","Gatsibo"),("Muhura","Gatsibo"),("Rwimbogo","Gatsibo"),
+    ("Nyagihanga","Gatsibo"),("Rugarama","Gatsibo"),("Murambi","Gatsibo"),
+    ("Gasange","Gatsibo"),("Remera","Gatsibo"),("Gitoki","Gatsibo"),
+    # Bugesera
+    ("Nyamata","Bugesera"),("Mayange","Bugesera"),("Ruhuha","Bugesera"),
+    ("Kamabuye","Bugesera"),("Rweru","Bugesera"),("Rilima","Bugesera"),
+    ("Ntarama","Bugesera"),("Gashora","Bugesera"),
+    # Kirehe
+    ("Kirehe","Kirehe"),("Nyamugari","Kirehe"),("Nyarubuye","Kirehe"),
+    ("Gatore","Kirehe"),("Mpanga","Kirehe"),("Nasho","Kirehe"),
+    ("Kigarama","Kirehe"),("Gahara","Kirehe"),
+    # Ngoma
+    ("Kibungo","Ngoma"),("Sake","Ngoma"),("Remera","Ngoma"),("Mutenderi","Ngoma"),
+    ("Zaza","Ngoma"),("Rukira","Ngoma"),("Rukumberi","Ngoma"),("Mugesera","Ngoma"),
+    ("Jarama","Ngoma"),("Karembo","Ngoma"),("Gashanda","Ngoma"),("Rurenge","Ngoma"),
+    # Nyagatare
+    ("Nyagatare","Nyagatare"),("Matimba","Nyagatare"),("Karangazi","Nyagatare"),
+    ("Gatunda","Nyagatare"),("Rwimiyaga","Nyagatare"),("Katabagema","Nyagatare"),
+    ("Rwempesha","Nyagatare"),("Karama","Nyagatare"),("Mimuri","Nyagatare"),
+    ("Musheferi","Nyagatare"),("Kiyombe","Nyagatare"),("Tabagwe","Nyagatare"),
+    ("Ntoma Mobile","Nyagatare"),
+    # Ruhango
+    ("Byimana","Ruhango"),("Kabagari","Ruhango"),("Kinazi","Ruhango"),
+    ("Ntongwe","Ruhango"),("Mbuye","Ruhango"),("Ruhango","Ruhango"),
+    # Huye
+    ("Ngoma","Huye"),("Rusatira","Huye"),("Huye","Huye"),("Mbazi","Huye"),("Simbi","Huye"),
+    # Nyaruguru
+    ("Mata","Nyaruguru"),("Kibeho","Nyaruguru"),("Nyagisozi","Nyaruguru"),
+    ("Busanze","Nyaruguru"),("Muganza","Nyaruguru"),("Ngera","Nyaruguru"),("Kivu","Nyaruguru"),
+    # Gisagara
+    ("Ndora","Gisagara"),("Gikonko","Gisagara"),("Nyanza","Gisagara"),("Save","Gisagara"),
+    ("Mamba","Gisagara"),("Mukindo","Gisagara"),("Muganza","Gisagara"),
+    # Nyamagabe
+    ("Gasaka","Nyamagabe"),("Kaduha","Nyamagabe"),("Musebeya","Nyamagabe"),
+    ("Tare","Nyamagabe"),("Kitabi","Nyamagabe"),("Musange","Nyamagabe"),
+    # Muhanga
+    ("Nyamabuye","Muhanga"),("Kiyumba","Muhanga"),("Muhanga","Muhanga"),("Mushingiro","Muhanga"),
+    # Kamonyi
+    ("Musambira","Kamonyi"),("Rukoma","Kamonyi"),("Mugina","Kamonyi"),
+    ("Kanombe","Kamonyi"),("Gacurabwenge","Kamonyi"),("Kayenzi","Kamonyi"),("Runda","Kamonyi"),
+    # Nyanza
+    ("Busasamana","Nyanza"),("Muyira","Nyanza"),("Mukingo","Nyanza"),
+    ("Ntyazo","Nyanza"),("Busoro","Nyanza"),
+    # Rubavu
+    ("Kanama","Rubavu"),("Gisenyi","Rubavu"),("Mudende","Rubavu"),
+    ("Busasamana","Rubavu"),("Bugeshi","Rubavu"),("Rugerero","Rubavu"),
+    # Nyabihu
+    ("Mukamira","Nyabihu"),("Jomba","Nyabihu"),("Rugera","Nyabihu"),
+    ("Jenda","Nyabihu"),("Kabatwa","Nyabihu"),("Karago","Nyabihu"),
+    # Ngororero
+    ("Kavumu","Ngororero"),("Gatumba","Ngororero"),("Nyange","Ngororero"),
+    ("Kanombe","Ngororero"),("Ngororero","Ngororero"),("Kabaya","Ngororero"),
+    # Rutsiro
+    ("Gihango","Rutsiro"),("Murunda","Rutsiro"),("Ruhango","Rutsiro"),
+    ("Rusebeya","Rutsiro"),("Kivumu","Rutsiro"),
+    # Karongi
+    ("Bwishyura","Karongi"),("Gashari","Karongi"),("Gishyita","Karongi"),
+    ("Rwankuba","Karongi"),("Rugabano","Karongi"),("Twumba","Karongi"),("Rubengera","Karongi"),
+    # Nyamasheke
+    ("Kanjongo","Nyamasheke"),("Ruharambuga","Nyamasheke"),("Macuba","Nyamasheke"),
+    ("Gihombo","Nyamasheke"),("Shangi","Nyamasheke"),("Karengera","Nyamasheke"),
+    ("Kagano","Nyamasheke"),
+    # Rusizi
+    ("Bugarama","Rusizi"),("Kamembe","Rusizi"),("Nyakabuye","Rusizi"),("Nkanka","Rusizi"),
+    ("Gashonga","Rusizi"),("Bweyeye","Rusizi"),("Nkombo","Rusizi"),("Muganza","Rusizi"),
+    # Gicumbi
+    ("Kaniga","Gicumbi"),("Bukure","Gicumbi"),("Byumba","Gicumbi"),
+    ("Rutare","Gicumbi"),("Cyumba","Gicumbi"),("Rushaki","Gicumbi"),
+    # Rulindo
+    ("Shyorongi","Rulindo"),("Kinihira","Rulindo"),("Bushoki","Rulindo"),
+    ("Murambi","Rulindo"),("Ntarabana","Rulindo"),("Buyoga","Rulindo"),
+    # Gakenke
+    ("Janja","Gakenke"),("Ruri","Gakenke"),("Rushashi","Gakenke"),
+    ("Gakenke","Gakenke"),("Cyabingo","Gakenke"),("Gashenyi","Gakenke"),
+    # Burera
+    ("Butaro","Burera"),("Bungwe","Burera"),("Cyanika","Burera"),("Rusarabuye","Burera"),
+    ("Rugendabari","Burera"),("Gahunga","Burera"),("Nemba","Burera"),
+    # Musanze
+    ("Muhoza","Musanze"),("Busogo","Musanze"),("Kinigi","Musanze"),
+    ("Remera","Musanze"),("Cyuve","Musanze"),
+]
 
 # ── Organisational units ───────────────────────────────────────────────────────
 
-ORG_STRUCTURE = {
-    "ICT Unit": {
-        "directorates": {
-            "ICT Infrastructure Directorate": {
-                "departments": ["Networks Department", "Systems Department", "Data Centre Department"],
-            },
-            "ICT Services Directorate": {
-                "departments": ["Helpdesk Department", "Software Department", "Security Department"],
-            },
-        }
-    },
-    "Finance Unit": {
-        "directorates": {
-            "Budget Directorate": {
-                "departments": ["Planning Department", "Execution Department"],
-            },
-            "Accounting Directorate": {
-                "departments": ["Payroll Department", "Reporting Department"],
-            },
-        }
-    },
-    "Administration Unit": {
-        "directorates": {
-            "Human Resources Directorate": {
-                "departments": ["Recruitment Department", "Training Department"],
-            },
-            "Logistics Directorate": {
-                "departments": ["Procurement Department", "Assets Department"],
-            },
-        }
-    },
-    "Operations Unit": {
-        "directorates": {
-            "Field Operations Directorate": {
-                "departments": ["Deployment Department", "Monitoring Department"],
-            },
-            "Intelligence Directorate": {
-                "departments": ["Analysis Department", "Investigations Department"],
-            },
-        }
-    },
-    "Legal Unit": {
-        "directorates": {
-            "Legal Affairs Directorate": {
-                "departments": ["Contracts Department", "Compliance Department"],
-            },
-        }
-    },
-    "Communications Unit": {
-        "directorates": {
-            "Public Affairs Directorate": {
-                "departments": ["Media Department", "Publications Department"],
-            },
-        }
-    },
-}
+UNITS = [
+    "IGP Office",
+    "DIGP AP Office",
+    "DIGP OPNS Office",
+    "IT",
+    "OPO",
+    "ISPSSP",
+    "PTS Gishari",
+    "NPC",
+    "Mayange CTTC",
+    "Crime Intelligence",
+    "Counter Intelligence",
+    "PSO",
+    "Inspectorate",
+    "Training",
+    "Fire & Rescue",
+    "Transport & Logistics",
+    "Marine",
+    "CCC",
+    "Community Policing",
+    "HRM",
+    "ASOC",
+    "TRS",
+    "PRM",
+    "AI",
+    "Logistics",
+    "TAF",
+    "Cooperation & Protocol",
+    "K9",
+    "Police General Headquarters",
+    "BSU",
+    "PDU",
+    "Finance & CBM",
+    "SAPU",
+    "Band",
+]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -312,18 +319,40 @@ class Command(BaseCommand):
     # ── clear ─────────────────────────────────────────────────────────────────
 
     def _clear_all(self):
-        Station.objects.all().delete()
-        DPU.objects.all().delete()
-        DPUOffice.objects.all().delete()
-        Region.objects.all().delete()
-        RegionOffice.objects.all().delete()
-        Office.objects.all().delete()
-        Department.objects.all().delete()
-        Directorate.objects.all().delete()
-        Unit.objects.all().delete()
-        Brand.objects.all().delete()
-        EquipmentCategory.objects.all().delete()
-        EquipmentStatus.objects.all().delete()
+        """
+        Delete all data in dependency order.
+        Equipment (and its dependents: Lending, Deployment, Stock) must be
+        removed BEFORE the reference/lookup tables because those FK columns
+        use on_delete=PROTECT.
+        """
+        with transaction.atomic():
+            # 1. Dependents of Equipment (child rows first)
+            self.stdout.write("  → Deleting Lendings...")
+            Lending.objects.all().delete()
+
+            self.stdout.write("  → Deleting Deployments...")
+            Deployment.objects.all().delete()
+
+            self.stdout.write("  → Deleting Stock entries...")
+            Stock.objects.all().delete()
+
+            self.stdout.write("  → Deleting Equipment records...")
+            Equipment.objects.all().delete()
+
+            # 2. Now safe to delete the reference / lookup tables
+            Station.objects.all().delete()
+            DPU.objects.all().delete()
+            DPUOffice.objects.all().delete()
+            Region.objects.all().delete()
+            RegionOffice.objects.all().delete()
+            Office.objects.all().delete()
+            Department.objects.all().delete()
+            Directorate.objects.all().delete()
+            Unit.objects.all().delete()
+            Brand.objects.all().delete()
+            EquipmentCategory.objects.all().delete()
+            EquipmentStatus.objects.all().delete()
+
         self.stdout.write("  Cleared.")
 
     # ── statuses ───────────────────────────────────────────────────────────────
@@ -366,117 +395,63 @@ class Command(BaseCommand):
     # ── geography ──────────────────────────────────────────────────────────────
 
     def _seed_geography(self):
-        self.stdout.write("Seeding geography (region offices → regions → DPUs → stations)...")
-        ro_count = re_count = do_count = dp_count = st_count = 0
+        self.stdout.write("Seeding geography (regions → DPUs → stations)...")
+        re_count = dp_count = st_count = 0
 
-        for ro_name, ro_data in GEOGRAPHY.items():
-            region_office, created = RegionOffice.objects.get_or_create(name=ro_name)
+        # Step 1: seed Regions from the flat (dpu, region) set
+        region_names = sorted({r for _, r in regions_dpus})
+        region_map = {}
+        for region_name in region_names:
+            region, created = Region.objects.get_or_create(name=region_name)
+            region_map[region_name] = region
             if created:
-                ro_count += 1
+                re_count += 1
 
-            for region_name, region_data in ro_data["regions"].items():
-                region, created = Region.objects.get_or_create(
-                    name=region_name,
-                    defaults={"region_office": region_office},
-                )
-                if created:
-                    re_count += 1
+        # Step 2: seed DPUs
+        dpu_map = {}
+        for dpu_name, region_name in regions_dpus:
+            region = region_map[region_name]
+            dpu, created = DPU.objects.get_or_create(
+                name=dpu_name,
+                defaults={"region": region},
+            )
+            dpu_map[dpu_name] = dpu
+            if created:
+                dp_count += 1
 
-                dpu_office_name = region_data.get("dpu_office")
-                dpu_office = None
-                if dpu_office_name:
-                    dpu_office, created = DPUOffice.objects.get_or_create(name=dpu_office_name)
-                    if created:
-                        do_count += 1
+        # Step 3: seed Stations
+        missing_dpus = set()
+        for station_name, dpu_name in STATIONS:
+            dpu = dpu_map.get(dpu_name)
+            if not dpu:
+                missing_dpus.add(dpu_name)
+                continue
+            _, created = Station.objects.get_or_create(name=station_name, dpu=dpu)
+            if created:
+                st_count += 1
 
-                for dpu_name, station_names in region_data["dpus"].items():
-                    dpu, created = DPU.objects.get_or_create(
-                        name=dpu_name,
-                        region=region,          # part of unique_dpu_per_region
-                        defaults={
-                            "dpu_office": dpu_office,
-                        },
-                    )
-                    if created:
-                        dp_count += 1
-
-                    for station_name in station_names:
-                        _, created = Station.objects.get_or_create(
-                            name=station_name,
-                            dpu=dpu,            # part of unique_station_per_dpu
-                        )
-                        if created:
-                            st_count += 1
+        if missing_dpus:
+            self.stdout.write(self.style.WARNING(
+                f"  WARNING — DPUs not found: {sorted(missing_dpus)}"
+            ))
 
         self.stdout.write(self.style.SUCCESS(
-            f"  RegionOffices: {ro_count}  |  Regions: {re_count}  |  "
-            f"DPUOffices: {do_count}  |  DPUs: {dp_count}  |  Stations: {st_count}"
+            f"  Regions: {re_count}  |  DPUs: {dp_count}  |  Stations: {st_count}"
         ))
 
     # ── org structure ──────────────────────────────────────────────────────────
 
     def _seed_org_structure(self):
-        self.stdout.write("Seeding organisational structure (units → directorates → departments → offices)...")
-        u_count = d_count = dept_count = o_count = 0
+        self.stdout.write("Seeding organisational units...")
+        u_count = 0
 
-        # Office requires both region AND dpu (non-nullable), and clean() validates
-        # that dpu.region == region. Pre-load a list of valid (region, dpu) pairs.
-        dpu_pairs = list(
-            DPU.objects.select_related("region").all()
-        )
-        if not dpu_pairs:
-            self.stdout.write(self.style.WARNING(
-                "  No DPUs found — skipping Office creation. "
-                "Run seed_reference_data again after geography is seeded."
-            ))
-            dpu_pairs = []
-
-        import itertools
-        dpu_cycle = itertools.cycle(dpu_pairs) if dpu_pairs else None
-
-        for unit_name, unit_data in ORG_STRUCTURE.items():
-            unit, created = Unit.objects.get_or_create(name=unit_name)
+        for unit_name in UNITS:
+            _, created = Unit.objects.get_or_create(name=unit_name)
             if created:
                 u_count += 1
 
-            for dir_name, dir_data in unit_data["directorates"].items():
-                directorate, created = Directorate.objects.get_or_create(
-                    name=dir_name,
-                    defaults={"unit": unit},
-                )
-                if created:
-                    d_count += 1
-
-                for dept_name in dir_data["departments"]:
-                    department, created = Department.objects.get_or_create(
-                        name=dept_name,
-                        defaults={"directorate": directorate},
-                    )
-                    if created:
-                        dept_count += 1
-
-                    if dpu_cycle is None:
-                        continue
-
-                    # Pick the next dpu+region pair — guaranteed consistent
-                    dpu    = next(dpu_cycle)
-                    region = dpu.region
-
-                    office_name = f"{dept_name} Office"
-                    _, created = Office.objects.get_or_create(
-                        name=office_name,
-                        defaults={
-                            "department": department,
-                            "region":     region,
-                            "dpu":        dpu,
-                        },
-                    )
-                    if created:
-                        o_count += 1
-
         self.stdout.write(self.style.SUCCESS(
-            f"  Units: {u_count}  |  Directorates: {d_count}  |  "
-            f"Departments: {dept_count}  |  Offices: {o_count}"
+            f"  Units: {u_count} created, {len(UNITS) - u_count} already existed"
         ))
 
     # ── summary ────────────────────────────────────────────────────────────────

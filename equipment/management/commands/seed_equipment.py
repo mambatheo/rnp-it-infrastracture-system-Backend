@@ -1,15 +1,23 @@
 """
-Management command to seed 10,000 equipment records per category.
+Management command to seed equipment records.
 Run AFTER seed_reference_data has been executed.
 
+Default: 1,000,000 records per category  (~55 categories = 55 M+ total rows).
+Use --count to override, --category to target one category, --batch to tune bulk size.
+Use --clear to wipe existing equipment data (Lending, Deployment, Stock, Equipment)
+before seeding (reference data is kept intact).
+
 Usage:
-    python manage.py seed_equipment
-    python manage.py seed_equipment --count 100        # smaller batch for testing
-    python manage.py seed_equipment --category Laptop  # single category only
-    python manage.py seed_equipment --batch 500        # bulk-create batch size
+    python manage.py seed_equipment                          # 1 M per category
+    python manage.py seed_equipment --count 100             # quick smoke-test
+    python manage.py seed_equipment --category Laptop       # single category only
+    python manage.py seed_equipment --batch 2000            # larger bulk batches
+    python manage.py seed_equipment --clear                 # wipe equipment then seed
+    python manage.py seed_equipment --clear --count 50      # wipe then seed 50 per cat
 """
 import random
 import string
+from contextlib import contextmanager
 from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
@@ -21,6 +29,7 @@ from equipment.models import (
     Equipment, EquipmentCategory, EquipmentStatus, Brand,
     Region, DPU, Station,
     Unit, Directorate, Department, Office,
+    Stock, Deployment, Lending,
 )
 
 try:
@@ -30,6 +39,10 @@ except ImportError:
     _HAS_SIGNAL = False
 
 User = get_user_model()
+
+# ─────────────────────────────────────────────────────────────────────────────
+# MODEL NAMES PER CATEGORY
+# ─────────────────────────────────────────────────────────────────────────────
 
 MODELS = {
     'Desktop': [
@@ -290,236 +303,326 @@ MODELS = {
         'CS1768', 'CS1716i', 'KN8164V', 'KVM-0831P',
         'NetDirector B064-008-01-IPG', 'Dell KVM 2161DS',
     ],
+    'Peripheral': [
+        'USB Hub 4-Port', 'Wireless Presenter', 'Numeric Keypad',
+        'Drawing Tablet', 'USB Sound Card', 'Generic Peripheral',
+    ],
 }
 
 _FALLBACK_MODELS = ['Model A', 'Model B', 'Model C', 'Model X', 'Model Pro', 'Model Plus']
 
+# ─────────────────────────────────────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Pre-built alphabet pool for serials — avoids repeated string.digits call
+_DIGITS = string.digits
+_SERIAL_PREFIXES = ['SN', 'SER', 'SRL', 'EQ', 'RNP']
+_DEPT_CODES      = ['ICT', 'RNP', 'HQ', 'OPS', 'FIN', 'LOG', 'ADM']
+
 
 def _random_serial():
-    prefix = random.choice(['SN', 'SER', 'SRL'])
-    digits = ''.join(random.choices(string.digits, k=10))
-    return '%s-%s' % (prefix, digits)
-
-
-def _random_marking(seq):
-    dept = random.choice(['ICT', 'RNP', 'HQ', 'OPS', 'FIN', 'LOG', 'ADM'])
-    year = random.randint(2018, 2025)
-    return '%s/%d/%05d' % (dept, year, seq)
-
-
-def _random_date(start_year=2015, end_year=2024):
-    start = date(start_year, 1, 1)
-    end   = date(end_year, 12, 31)
-    return start + timedelta(days=random.randint(0, (end - start).days))
-
-
-def _build_location_pool(regions, dpus, stations, units, directorates, departments, offices):
     """
-    Build a pool of COMPLETE, hierarchically consistent location dicts.
-    Every entry is guaranteed non-empty.
-
-    Hierarchy:
-      Station  -> region + dpu + station
-      DPU      -> region + dpu
-      Office   -> region + dpu + office
-      Unit     -> unit only
-      Directorate -> directorate only
-      Department  -> department only
-      Region   -> region only  (HQ / unassigned-to-DPU)
+    Generate a serial number.
+    FIX: dropped the Python-set deduplication loop from the original — at 1M
+    rows it bloated RAM and slowed linearly. We rely instead on the DB unique
+    constraint + bulk_create(ignore_conflicts=True), which is both faster and
+    correct.  The 14-character space (5 prefixes × 10^10 digits) gives a
+    collision probability well under 0.01% even at 1 M rows per run.
     """
-    # Pre-compute FK traversal to avoid lazy-load N+1
-    dpu_region_map     = {d.id: d.region    for d in dpus}    # dpu.id   -> Region
-    station_dpu_map    = {s.id: s.dpu       for s in stations} # station.id -> DPU
-    station_region_map = {}
-    for s in stations:
-        dpu = station_dpu_map.get(s.id)
-        if dpu:
-            station_region_map[s.id] = dpu_region_map.get(dpu.id)
+    prefix = random.choice(_SERIAL_PREFIXES)
+    digits = ''.join(random.choices(_DIGITS, k=10))
+    return f'{prefix}-{digits}'
+
+
+def _random_marking(seq: int) -> str:
+    """
+    FIX: removed random dept/year prefix — those made collisions inevitable
+    across categories (7 depts × 8 years × 10M seq ≪ 55M rows needed).
+    The global seq counter is already unique; we just zero-pad it.
+    """
+    return f'RNP/{seq:010d}'
+
+
+# Pre-computed date range to avoid repeated timedelta arithmetic inside the loop
+_DATE_START   = date(2015, 1, 1)
+_DATE_RANGE   = (date(2024, 12, 31) - _DATE_START).days
+
+
+def _random_date() -> date:
+    return _DATE_START + timedelta(days=random.randint(0, _DATE_RANGE))
+
+
+@contextmanager
+def _signal_muted(sender):
+    """Temporarily disconnect auto_classify_equipment for bulk inserts.
+    FIX: original only reconnected at the very end of handle(); if the command
+    crashed mid-run the signal stayed disconnected for the whole process.
+    Using a context manager guarantees reconnection even on exceptions.
+    """
+    if _HAS_SIGNAL:
+        post_save.disconnect(auto_classify_equipment, sender=sender)
+    try:
+        yield
+    finally:
+        if _HAS_SIGNAL:
+            post_save.connect(auto_classify_equipment, sender=sender)
+
+
+def _build_location_pool(regions, dpus, stations, units, offices):
+    """
+    Build a flat list of location-kwarg dicts for random.choice().
+    Each dict is a complete, hierarchically consistent set of FK values
+    ready to be unpacked onto an Equipment instance via setattr().
+
+    Weights (approximate share of pool):
+      Stations     40 %  – most equipment lives at a specific station
+      DPUs         30 %
+      Offices      10 %
+      Units        10 %
+      Regions      10 %  – HQ / unassigned
+    """
+    # Pre-resolve FK traversals to avoid N+1 lazy loads
+    dpu_region   = {d.id: d.region for d in dpus}
+    stn_dpu      = {s.id: s.dpu    for s in stations}
+    stn_region   = {s.id: dpu_region.get(stn_dpu[s.id].id) for s in stations if s.id in stn_dpu}
 
     pool = []
 
-    # --- Stations (most specific, 40% of pool) ---
     for s in stations:
-        region = station_region_map.get(s.id)
-        dpu    = station_dpu_map.get(s.id)
-        entry  = {'station': s}
-        if dpu:    entry['dpu']    = dpu
-        if region: entry['region'] = region
-        pool.extend([entry] * 4)
+        entry = {'station': s}
+        dpu = stn_dpu.get(s.id)
+        if dpu:
+            entry['dpu'] = dpu
+            rgn = dpu_region.get(dpu.id)
+            if rgn:
+                entry['region'] = rgn
+        pool.extend([entry] * 4)          # weight 4
 
-    # --- DPUs (30%) ---
     for d in dpus:
-        region = dpu_region_map.get(d.id)
-        entry  = {'dpu': d}
-        if region: entry['region'] = region
-        pool.extend([entry] * 3)
+        entry = {'dpu': d}
+        rgn = dpu_region.get(d.id)
+        if rgn:
+            entry['region'] = rgn
+        pool.extend([entry] * 3)          # weight 3
 
-    # --- Offices (10%) - carry region + dpu ---
     for o in offices:
         entry = {'office': o}
         try:
             if o.region: entry['region'] = o.region
-            if o.dpu:    entry['dpu'] = o.dpu
+            if o.dpu:    entry['dpu']    = o.dpu
         except Exception:
             pass
-        pool.extend([entry] * 2)
+        pool.extend([entry] * 1)          # weight 1
 
-    # --- Org units (standalone, 8%) ---
     for u in units:
-        pool.extend([{'unit': u}] * 1)
+        pool.append({'unit': u})           # weight 1
 
-    # --- Directorates (4%) ---
-    for d in directorates:
-        pool.extend([{'directorate': d}] * 1)
-
-    # --- Departments (4%) ---
-    for d in departments:
-        pool.extend([{'department': d}] * 1)
-
-    # --- Regions only (HQ-level, 4%) ---
     for r in regions:
-        pool.extend([{'region': r}] * 2)
+        pool.extend([{'region': r}] * 1)  # weight 1
 
     return pool
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# COMMAND
+# ─────────────────────────────────────────────────────────────────────────────
+
 class Command(BaseCommand):
-    help = 'Seed equipment records per category (run after seed_reference_data)'
+    help = 'Seed equipment records — default 1,000,000 per category (run after seed_reference_data)'
 
     def add_arguments(self, parser):
-        parser.add_argument('--count',    type=int, default=10_000,
-                            help='Records per category (default: 10000)')
-        parser.add_argument('--category', type=str, default=None,
-                            help='Only seed this category name')
-        parser.add_argument('--batch',    type=int, default=500,
-                            help='Bulk-create batch size (default: 500)')
+        parser.add_argument(
+            '--count', type=int, default=1_000_000,
+            help='Records per category (default: 1 000 000)',
+        )
+        parser.add_argument(
+            '--category', type=str, default=None,
+            help='Only seed this category name (case-insensitive)',
+        )
+        parser.add_argument(
+            '--batch', type=int, default=2_000,
+            help='Bulk-create batch size (default: 2000). '
+                 'Raise to 5000 on fast hardware / PostgreSQL for more speed.',
+        )
+        parser.add_argument(
+            '--clear', action='store_true',
+            help=(
+                'Delete all existing equipment records (Lending, Deployment, '
+                'Stock, Equipment) before seeding. Reference data is preserved.'
+            ),
+        )
 
     def handle(self, *args, **options):
         count_per_cat = options['count']
         only_category = options['category']
         batch_size    = options['batch']
 
-        # Mute signal during bulk insert for performance
-        if _HAS_SIGNAL:
-            post_save.disconnect(auto_classify_equipment, sender=Equipment)
+        # ── Optional clear ──────────────────────────────────────────────────
+        if options['clear']:
+            self.stdout.write(self.style.WARNING(
+                'Clearing existing equipment records (Lending → Deployment → Stock → Equipment)...'
+            ))
+            with transaction.atomic():
+                lend_count = Lending.objects.count()
+                Lending.objects.all().delete()
+                self.stdout.write(f'  Deleted {lend_count:,} Lending record(s).')
 
+                dep_count = Deployment.objects.count()
+                Deployment.objects.all().delete()
+                self.stdout.write(f'  Deleted {dep_count:,} Deployment record(s).')
+
+                stock_count = Stock.objects.count()
+                Stock.objects.all().delete()
+                self.stdout.write(f'  Deleted {stock_count:,} Stock record(s).')
+
+                eq_count = Equipment.objects.count()
+                Equipment.objects.all().delete()
+                self.stdout.write(self.style.SUCCESS(
+                    f'  Deleted {eq_count:,} Equipment record(s). Done.'
+                ))
+
+        # ── Load all reference objects once ───────────────────────────────
         self.stdout.write('Loading reference data from DB...')
 
-        statuses     = list(EquipmentStatus.objects.all())
-        regions      = list(Region.objects.all())
-        dpus         = list(DPU.objects.select_related('region').all())
-        stations     = list(Station.objects.select_related('dpu', 'dpu__region').all())
-        units        = list(Unit.objects.all())
-        directorates = list(Directorate.objects.all())
-        departments  = list(Department.objects.all())
-        offices      = list(Office.objects.select_related('region', 'dpu').all())
-        admin_user   = (
+        statuses  = list(EquipmentStatus.objects.all())
+        regions   = list(Region.objects.all())
+        dpus      = list(DPU.objects.select_related('region').all())
+        stations  = list(Station.objects.select_related('dpu__region').all())
+        units     = list(Unit.objects.all())
+        offices   = list(Office.objects.select_related('region', 'dpu').all())
+        admin     = (
             User.objects.filter(is_superuser=True).first()
             or User.objects.first()
         )
 
         if not statuses:
             self.stderr.write(self.style.ERROR(
-                'No statuses found. Run seed_reference_data first.'))
+                'No statuses found — run seed_reference_data first.'))
             return
-
         if not (regions or dpus or units):
             self.stderr.write(self.style.ERROR(
-                'No location data found. Run seed_reference_data first.'))
+                'No location data found — run seed_reference_data first.'))
             return
 
-        # Build location pool with full hierarchical consistency
         self.stdout.write('Building location pool...')
-        loc_pool = _build_location_pool(
-            regions, dpus, stations, units, directorates, departments, offices
+        loc_pool = _build_location_pool(regions, dpus, stations, units, offices)
+        self.stdout.write(
+            f'  Pool size: {len(loc_pool):,} slots  '
+            f'({len(stations):,} stations | {len(dpus):,} DPUs | {len(units):,} units)'
         )
-        self.stdout.write('  Pool: %d location slots across %d stations, %d DPUs, %d units'
-                          % (len(loc_pool), len(stations), len(dpus), len(units)))
+        # FIX: guard against empty pool — random.choice([]) raises IndexError
+        if not loc_pool:
+            self.stderr.write(self.style.ERROR(
+                'Location pool is empty — no stations, DPUs, units, or regions found. '
+                'Run seed_reference_data first.'
+            ))
+            return
 
-        # Determine which categories to seed
+        # ── Resolve categories ─────────────────────────────────────────────
         if only_category:
             categories = list(EquipmentCategory.objects.filter(name__iexact=only_category))
             if not categories:
-                self.stderr.write(self.style.ERROR('Category "%s" not found.' % only_category))
+                self.stderr.write(self.style.ERROR(f'Category "{only_category}" not found.'))
                 return
         else:
             categories = list(EquipmentCategory.objects.all())
 
-        # Brand lookup: category_id -> [Brand]
-        brand_map = {}
+        # Brand lookup: category_id → [Brand, …]
+        brand_map: dict[int, list] = {}
         for brand in Brand.objects.select_related('category').all():
             if brand.category_id:
                 brand_map.setdefault(brand.category_id, []).append(brand)
 
+        # ── Active status names (for deployment_date logic) ────────────────
+        active_status_ids = set(
+            EquipmentStatus.objects.filter(name='Active').values_list('id', flat=True)
+        )
+
+        # ── Global sequence base (avoids duplicate marking codes) ──────────
+        seq_base = Equipment.objects.count()
+
         total_created = 0
-        seq = Equipment.objects.count()
 
-        for category in categories:
-            self.stdout.write('  Seeding %d x %s...' % (count_per_cat, category.name))
+        # Mute signal for the entire run via context manager (FIX #4)
+        with _signal_muted(Equipment):
+            for category in categories:
+                cat_brands = brand_map.get(category.id, [])
+                cat_models = MODELS.get(category.name, _FALLBACK_MODELS)
 
-            cat_brands = brand_map.get(category.id, [])
-            cat_models = MODELS.get(category.name, _FALLBACK_MODELS)
-
-            batch   = []
-            serials = set()
-
-            for i in range(count_per_cat):
-                seq += 1
-                brand  = random.choice(cat_brands) if cat_brands else None
-                model  = random.choice(cat_models)
-                status = random.choice(statuses)
-                intent = random.choice(['Stock', 'Deployment'])
-
-                # Unique serial within this run
-                serial = _random_serial()
-                while serial in serials:
-                    serial = _random_serial()
-                serials.add(serial)
-
-                marking = _random_marking(seq)
-
-                # Guaranteed non-empty, hierarchically complete location
-                loc_kwargs = random.choice(loc_pool)
-
-                eq = Equipment(
-                    name                = '%s %s' % (category.name, model),
-                    equipment_type      = category,
-                    registration_intent = intent,
-                    brand               = brand,
-                    model               = model,
-                    status              = status,
-                    serial_number       = serial,
-                    marking_code        = marking,
-                    deployment_date     = _random_date() if status.name == 'Active' else None,
-                    created_by          = admin_user,
-                    updated_by          = admin_user,
+                self.stdout.write(
+                    f'  Seeding {count_per_cat:,} × {category.name}  '
+                    f'({len(cat_brands)} brands, {len(cat_models)} models)...'
                 )
-                for field, value in loc_kwargs.items():
-                    setattr(eq, field, value)
 
-                batch.append(eq)
+                cat_created = 0
+                batch: list[Equipment] = []
 
-                if len(batch) >= batch_size:
-                    with transaction.atomic():
-                        Equipment.objects.bulk_create(batch, ignore_conflicts=True)
-                    total_created += len(batch)
-                    batch = []
-
-            if batch:
+                # FIX: one transaction per category instead of one per batch —
+                # dramatically reduces commit overhead at 1 M rows.
                 with transaction.atomic():
-                    Equipment.objects.bulk_create(batch, ignore_conflicts=True)
-                total_created += len(batch)
+                    for i in range(count_per_cat):
+                        seq_base += 1
 
-            self.stdout.write(self.style.SUCCESS(
-                '    OK: %s -> %d records' % (category.name, count_per_cat)
-            ))
+                        brand  = random.choice(cat_brands) if cat_brands else None
+                        model  = random.choice(cat_models)
+                        status = random.choice(statuses)
+                        intent = random.choice(['Stock', 'Deployment'])
 
-        if _HAS_SIGNAL:
-            post_save.connect(auto_classify_equipment, sender=Equipment)
+                        eq = Equipment(
+                            name                = f'{category.name} {model}',
+                            equipment_type      = category,
+                            registration_intent = intent,
+                            brand               = brand,
+                            model               = model,
+                            status              = status,
+                            serial_number       = _random_serial(),
+                            marking_code        = _random_marking(seq_base),
+                            deployment_date     = (
+                                _random_date() if status.id in active_status_ids else None
+                            ),
+                            created_by          = admin,
+                            updated_by          = admin,
+                        )
+
+                        # Apply location FKs
+                        for field, value in random.choice(loc_pool).items():
+                            setattr(eq, field, value)
+
+                        batch.append(eq)
+
+                        if len(batch) >= batch_size:
+                            inserted = Equipment.objects.bulk_create(
+                                batch, ignore_conflicts=True
+                            )
+                            # FIX: on PostgreSQL bulk_create(ignore_conflicts=True)
+                            # always returns the full input list regardless of how
+                            # many rows were actually written. Use the batch length
+                            # as the upper bound — conflicts are rare (<0.01%).
+                            cat_created += len(batch)
+                            batch = []
+
+                            # FIX: guard against 0 % N == 0 firing immediately
+                            if cat_created > 0 and cat_created % 100_000 == 0:
+                                self.stdout.write(
+                                    f'    … {cat_created:,} / {count_per_cat:,}'
+                                )
+
+                    # Flush remaining rows
+                    if batch:
+                        Equipment.objects.bulk_create(
+                            batch, ignore_conflicts=True
+                        )
+                        cat_created += len(batch)
+
+                total_created += cat_created
+                self.stdout.write(self.style.SUCCESS(
+                    f'    ✓ {category.name}: {cat_created:,} records inserted'
+                ))
 
         self.stdout.write(self.style.SUCCESS(
-            '\nDONE. Total created this run: %d' % total_created
+            f'\nDONE.  This run: {total_created:,} records'
         ))
         self.stdout.write(self.style.SUCCESS(
-            'Grand total equipment in DB: %d' % Equipment.objects.count()
+            f'Grand total in DB: {Equipment.objects.count():,}'
         ))
