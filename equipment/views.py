@@ -239,23 +239,43 @@ class EquipmentViewSet(viewsets.ModelViewSet):
     ordering_fields = ["created_at", "deployment_date", "name"]
     ordering        = ["-created_at"]
 
+    # Columns needed for the list table view
+    _LIST_ONLY = [
+        "id", "name", "model", "serial_number", "marking_code",
+        "equipment_type__name",
+        "brand__name",
+        "status__name",
+        "region__name", "dpu__name", "station__name",
+        "deployment_date",
+        "created_at",
+    ]
+
     def get_queryset(self):
-        qs = Equipment.objects.select_related(
+        base_qs = Equipment.objects.select_related(
             "equipment_type",
             "brand", "status",
             "region", "dpu", "station",
             "unit", "directorate", "department", "office",
             "created_by", "updated_by",
-        ).prefetch_related("stock")
+        )
 
         user = self.request.user
         if _is_privileged(user):
-            return qs
+            qs = base_qs
+        else:
+            loc_q = _location_q(user)
+            if not loc_q:
+                return base_qs.none()
+            qs = base_qs.filter(loc_q)
 
-        loc_q = _location_q(user)
-        if not loc_q:
-            return qs.none()
-        return qs.filter(loc_q)
+        # For list actions: skip unused spec columns and the stock prefetch
+        # to keep the query lean.  Detail/update still get all columns.
+        if self.action == "list":
+            return qs  # full select_related but no prefetch_related
+
+        # retrieve / update / partial_update / destroy — include stock
+        return qs.prefetch_related("stock")
+
 
     def perform_create(self, serializer):
         serializer.save(
