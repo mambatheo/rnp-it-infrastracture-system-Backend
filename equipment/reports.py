@@ -359,7 +359,7 @@ def _make_formats(wb):
         "font_color": "#FFFFFF", "bg_color": ACCENT,
         "align": "center", "valign": "vcenter",
     })
-    # Header block (match PDF layout)
+    # Header block 
     f["sys_name_left"] = wb.add_format({
         "bold": True, "font_name": "Tahoma", "font_size": 11,
         "font_color": DARK_BLUE, "align": "left", "valign": "vcenter",
@@ -414,15 +414,7 @@ def _png_size(path):
 
 
 def _xl_logo_options():
-    """
-    Keep logo inside a predictable box so it cannot overlap table content.
-
-    XlsxWriter renders images at 96 DPI on screen.  High-res PNGs (e.g. 300 DPI
-    source files) can have very large pixel dimensions, so even a small scale
-    factor produces a huge rendered image.  We therefore target a fixed *on-screen*
-    size of 64×64 px and use object_position=3 (don't move or size with cells)
-    to prevent the image from pushing rows around.
-    """
+  
     # Keep it small enough to fit within the header rows without overlapping text.
     TARGET_PX = 48          # desired rendered size in screen-pixels (≈ 96 DPI)
     DEFAULT_SCALE = 0.055   # safe fallback when image dimensions are unknown
@@ -452,19 +444,7 @@ def _xl_logo_options():
 
 
 def _xl_write_header(ws, fmt, report_title, n_cols):
-    """
-    Excel header styled to mirror the PDF:
-    - Logo top-left
-    - System name below/near logo on the left
-    - Report title centered on the top row
-    - Blue divider line under the header block
-    - Generated timestamp in the print footer (bottom-right)
-    """
-    # Header block:
-    # Row 0: logo (left) + report title (center/right)
-    # Row 1: system name (below logo, its own row)
-    # Row 2: divider line
-    # Row 3: spacer
+  
     ws.set_row(0, 40)
     ws.set_row(1, 20)
     ws.set_row(2, 6)
@@ -482,7 +462,6 @@ def _xl_write_header(ws, fmt, report_title, n_cols):
     sys_end   = min(3, max(0, n_cols - 1))
     ws.merge_range(1, sys_start, 1, sys_end, SYSTEM_NAME or "", fmt["sys_name_left"])
 
-    # Print footer (bottom-right) timestamp like the PDF footer.
     # '&R' = right section of footer in Excel.
     ws.set_footer(f"&RGenerated: {timezone.now().strftime('%d %B %Y at %H:%M')}")
 
@@ -514,7 +493,7 @@ def _close_workbook(wb, output):
 
 
 # ─────────────────────────────────────────
-# XLSXWRITER SHEET WRITERS  (unchanged)
+# XLSXWRITER SHEET WRITERS  
 # ─────────────────────────────────────────
 
 def _write_equipment_sheet(wb, fmt, sheet_title, equipment_type=None, extra_filter=None, rows=None):
@@ -529,9 +508,8 @@ def _write_equipment_sheet(wb, fmt, sheet_title, equipment_type=None, extra_filt
     ws.set_landscape()
     ws.fit_to_pages(1, 0)
     ws.hide_gridlines(2)
-    ws.protect(REPORT_PASSWORD)
 
-    row = _xl_write_header(ws, fmt, f"Equipment Report — {sheet_title}", n_cols)
+    row = _xl_write_header(ws, fmt, f" {sheet_title}", n_cols)
     for col_idx, w in enumerate(col_widths_xl or [15] * n_cols):
         ws.set_column(col_idx, col_idx, w)
 
@@ -587,9 +565,8 @@ def _write_stock_sheet(wb, fmt, sheet_title, equipment_type=None):
     ws.set_landscape()
     ws.fit_to_pages(1, 0)
     ws.hide_gridlines(2)
-    ws.protect(REPORT_PASSWORD)
 
-    row = _xl_write_header(ws, fmt, f"Stock Report — {sheet_title}", n_cols)
+    row = _xl_write_header(ws, fmt, f" {sheet_title}", n_cols)
     for col_idx, w in enumerate(col_widths_xl or [15] * n_cols):
         ws.set_column(col_idx, col_idx, w)
 
@@ -610,24 +587,18 @@ def _write_stock_sheet(wb, fmt, sheet_title, equipment_type=None):
 
 
 def _write_unit_sheet(wb, fmt, unit_name, extra_filter, report_label=None):
-    """
-    Write a location-scoped sheet (Unit / Region / DPU).
-    The sheet starts with the same header block used by all other Excel
-    reports (logo + system name + report title + timestamp), followed by
-    the location-name banner and the per-equipment-type sections.
-    """
+   
     n_cols = len(UNIT_FIELDS)
     ws     = wb.add_worksheet(_safe_sheet_name(unit_name))
     ws.set_landscape()
     ws.fit_to_pages(1, 0)
     ws.hide_gridlines(2)
-    ws.protect(REPORT_PASSWORD)
 
     for col_idx, w in enumerate(UNIT_COL_WIDTHS_XL):
         ws.set_column(col_idx, col_idx, w)
 
     # ── standard header block: logo / system name / report title / timestamp ──
-    report_title = report_label or f"{unit_name} — Equipment Report"
+    report_title = report_label or f"{unit_name}"
     row = _xl_write_header(ws, fmt, report_title, n_cols)
 
     # ── location name banner ──────────────────────────────────────────────────
@@ -676,7 +647,6 @@ def _write_summary_sheet(wb, fmt, title, col_a_label, rows_data, grand_total):
     ws = wb.add_worksheet("Summary")
     ws.set_landscape()
     ws.hide_gridlines(2)
-    ws.protect(REPORT_PASSWORD)
     ws.set_column(0, 0, 30)
     ws.set_column(1, 1, 15)
     ws.set_column(2, 2, 10)
@@ -706,7 +676,6 @@ def _write_equipment_summary_sheet(wb, fmt, summary):
     ws = wb.add_worksheet("Summary")
     ws.set_landscape()
     ws.hide_gridlines(2)
-    ws.protect(REPORT_PASSWORD)
     col_widths = [28, 8, 8, 10, 14, 10, 10, 8]
     for i, w in enumerate(col_widths):
         ws.set_column(i, i, w)
@@ -739,7 +708,7 @@ def _write_equipment_summary_sheet(wb, fmt, summary):
 
 
 # ═══════════════════════════════════════════════════════════════════
-#  PDF STYLES  — font size 11 throughout, tight padding
+#  PDF STYLES  
 # ═══════════════════════════════════════════════════════════════════
 
 _PDF_STYLES = getSampleStyleSheet()
@@ -824,9 +793,7 @@ TABLE_STYLE = TableStyle([
 # PDF HELPERS
 # ─────────────────────────────────────────
 
-# Creating many Paragraph objects is extremely expensive in ReportLab.
-# To keep PDF generation fast, we keep body cells as plain strings and
-# truncate very long values (mostly "Location") to prevent pathological layouts.
+
 _PDF_MAX_CELL_CHARS = 60
 
 def _pdf_cell_text(val, max_chars=_PDF_MAX_CELL_CHARS):
@@ -844,10 +811,7 @@ def _wrap_rows(header_row, data_rows):
 
 
 def _pdf_tables_chunked(headers, rows, col_widths, *, chunk_size=200):
-    """
-    Build one or more Tables from rows, split into smaller chunks.
-    This avoids very slow layout when a single table has many rows.
-    """
+   
     if not rows:
         return []
     out = []
@@ -1404,7 +1368,7 @@ def _pdf_unit_block(unit, type_rows):
 
 def generate_unit_pdf_all():
     """Generate PDF for all units — ONE query for all equipment, zero per-unit queries."""
-    title    = "Equipment Report by Organisational Unit"
+    title    = "Equipment Report by  Unit"
     units    = list(Unit.objects.order_by("name"))
     all_data = _fetch_unit_rows_grouped(Unit.objects.all())
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
@@ -1418,7 +1382,7 @@ def generate_unit_pdf_by_unit(unit_id):
     unit     = Unit.objects.get(pk=unit_id)
     all_data = _fetch_unit_rows_grouped(Unit.objects.filter(pk=unit_id))
     type_rows = all_data.get(str(unit.id), {})
-    title    = f"{unit.name.upper()} — Equipment Report"
+    title    = f"{unit.name.upper()}"
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
     elements.extend(_pdf_unit_block(unit, type_rows))
     return _build_pdf(elements, title)
@@ -1494,7 +1458,7 @@ def generate_region_pdf_by_region(region_id):
     region   = Region.objects.get(pk=region_id)
     all_data = _fetch_region_rows_grouped(Region.objects.filter(pk=region_id))
     type_rows = all_data.get(str(region.id), {})
-    title    = f"{region.name.upper()} — Equipment Report"
+    title    = f"{region.name.upper()}"
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
     elements.extend(_pdf_region_block(region, type_rows))
     return _build_pdf(elements, title)
@@ -1570,7 +1534,7 @@ def generate_dpu_pdf_by_dpu(dpu_id):
     dpu      = DPU.objects.get(pk=dpu_id)
     all_data = _fetch_dpu_rows_grouped(DPU.objects.filter(pk=dpu_id))
     type_rows = all_data.get(str(dpu.id), {})
-    title    = f"{dpu.name.upper()} — Equipment Report"
+    title    = f"{dpu.name.upper()}"
     elements = [_pdf_header(title), Spacer(1, 0.3*cm)]
     elements.extend(_pdf_dpu_block(dpu, type_rows))
     return _build_pdf(elements, title)
