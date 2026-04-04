@@ -4,29 +4,17 @@ from rest_framework.response import Response
 
 
 class FlexiblePageNumberPagination(PageNumberPagination):
-    """
-    Pagination with fast approximate counts for large tables.
-
-    For tables with > 10,000 rows we use PostgreSQL's statistics-based
-    estimate (pg_class.reltuples) instead of COUNT(*).  This is nearly
-    instant regardless of table size.  For small tables we fall back to
-    an exact count so the UI is always accurate when it matters.
-    """
+    
     page_size              = 15
     page_size_query_param  = "page_size"
-    max_page_size          = 500   # cap runaway requests
+    max_page_size          = 500   
 
     # Threshold above which we switch to the approximate count
     APPROX_COUNT_THRESHOLD = 10_000
 
     def _approx_count(self, queryset):
-        """
-        Return PostgreSQL's estimated row count for the table that backs
-        *queryset*, or None if we cannot determine it (non-Postgres DB,
-        filtered queryset, etc.).
-        """
-        # Only use the estimate when there are no WHERE filters applied
-        # (i.e. the queryset is unfiltered — checking via query.where)
+       
+      
         if queryset.query.where:
             return None
 

@@ -6,7 +6,7 @@ from .models import (
     Unit, Directorate, Department, Office,
     EquipmentCategory, Brand, EquipmentStatus,
     Equipment,
-    Stock, Deployment, Lending, 
+    Stock, Deployment, Lending, TrainingSchool,
 )
 
 
@@ -58,6 +58,11 @@ class OfficeInline(admin.TabularInline):
     model = Office
     extra = 0
     fields = ["name", "region", "dpu"]
+    show_change_link = True
+class TrainingSchoolInline(admin.TabularInline):
+    model = TrainingSchool
+    extra = 0
+    fields = ["name", "location"]
     show_change_link = True
 
 
@@ -193,9 +198,13 @@ class OfficeAdmin(admin.ModelAdmin):
     search_fields       = ["name", "department__name", "region__name", "dpu__name"]
     ordering            = ["name"]
     autocomplete_fields = ["department", "region", "dpu"]
+    
 
-
-
+@admin.register(TrainingSchool)
+class TrainingSchoolAdmin(admin.ModelAdmin):
+    list_display  = ["name", "location"]
+    search_fields = ["name", "location"]
+    ordering      = ["name"]
 
 @admin.register(EquipmentCategory)
 class EquipmentCategoryAdmin(admin.ModelAdmin):
@@ -240,7 +249,7 @@ class EquipmentAdmin(admin.ModelAdmin):
     list_filter = [
         "registration_intent",
         "status", "equipment_type",
-        "region", "dpu", "unit",
+        "region", "dpu", "unit", "training_school",
         "brand__category", "brand",
     ]
 
@@ -248,7 +257,7 @@ class EquipmentAdmin(admin.ModelAdmin):
         "name", "serial_number", "marking_code",
         "model", "comments",
         "brand__name", "region__name", "dpu__name",
-        "office__name",
+        "office__name", "training_school__name",
     ]
 
     ordering       = ["-created_at"]
@@ -263,7 +272,7 @@ class EquipmentAdmin(admin.ModelAdmin):
     autocomplete_fields = [
         "region", "dpu", "station",
         "unit", "directorate", "department", "office",
-        "brand", "status",
+        "brand", "status", "training_school",
     ]
 
     inlines = [StockInline, DeploymentInline, LendingInline]
@@ -286,6 +295,7 @@ class EquipmentAdmin(admin.ModelAdmin):
             "fields": (
                 ("region", "dpu", "station"),
                 ("unit", "directorate", "department", "office"),
+                ("training_school"),
             )
         }),
         (_("Classification"), {
@@ -406,7 +416,7 @@ class DeploymentAdmin(admin.ModelAdmin):
         "equipment", "status",
         "issued_to_user",
         "issued_to_region", "issued_to_dpu", "issued_to_unit",
-        "issued_to_directorate", "issued_to_department", "issued_to_office",
+        "issued_to_directorate", "issued_to_department", "issued_to_office", "issued_to_trainingschool",
         "issued_date", "issued_by",
     ]
 
@@ -414,7 +424,7 @@ class DeploymentAdmin(admin.ModelAdmin):
         "status",
         "issued_to_region", "issued_to_dpu",
         "issued_to_unit", "issued_to_directorate",
-        "issued_to_department", "issued_to_office",
+        "issued_to_department", "issued_to_office","issued_to_trainingschool",
     ]
 
     search_fields = [
@@ -423,7 +433,7 @@ class DeploymentAdmin(admin.ModelAdmin):
         "issued_to_user",
         "issued_to_region__name", "issued_to_dpu__name",
         "issued_to_unit__name", "issued_to_directorate__name",
-        "issued_to_department__name", "issued_to_office__name",
+        "issued_to_department__name", "issued_to_office__name","issued_to_trainingschool",
         "comments",
     ]
 
@@ -435,7 +445,7 @@ class DeploymentAdmin(admin.ModelAdmin):
     autocomplete_fields = [
         "equipment",
         "issued_to_region", "issued_to_dpu", "issued_to_unit",
-        "issued_to_directorate", "issued_to_department", "issued_to_office",
+        "issued_to_directorate", "issued_to_department", "issued_to_office", "issued_to_trainingschool",
     ]
 
     fieldsets = (
@@ -450,7 +460,7 @@ class DeploymentAdmin(admin.ModelAdmin):
                 ("issued_to_dpu_office",    "issued_to_dpu"),
                 "issued_to_station",
                 ("issued_to_unit", "issued_to_directorate"),
-                ("issued_to_department", "issued_to_office"),
+                ("issued_to_department", "issued_to_office", "issued_to_trainingschool"),
                 "purpose",
             )
         }),
@@ -483,9 +493,9 @@ class LendingAdmin(admin.ModelAdmin):
 
     list_display = [
         "equipment", "status",
-        "borrower_name", "phone_number", "unit", "region", "dpu", "station",
+        "borrower_name", "phone_number", "unit", "region", "dpu", "station", "training_school",
         "issued_date", "returned_date",
-        "condition_on_return", "issued_by",
+        "condition_on_return", "issued_by", 
     ]
 
     list_filter = [
@@ -525,6 +535,11 @@ class LendingAdmin(admin.ModelAdmin):
             "fields": (
                 ("unit",)
                 
+            )
+        }),
+        (_("Training Schools"), {
+            "fields": (
+                ("training_school",)
             )
         }),
         

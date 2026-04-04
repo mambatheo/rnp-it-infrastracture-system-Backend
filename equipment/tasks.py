@@ -2,18 +2,20 @@ import base64
 import time
 from celery import shared_task
 from django.core.cache import cache
-from .models import DPU, Region, Unit
+from .models import DPU, Region, Unit, TrainingSchool
 from .reports import (
-    generate_excel_all,            generate_excel_by_type,
-    generate_pdf_all,              generate_pdf_by_type,
-    generate_stock_excel_all,      generate_stock_excel_by_type,
-    generate_stock_pdf_all,        generate_stock_pdf_by_type,
-    generate_unit_excel_all,       generate_unit_excel_by_unit,
-    generate_unit_pdf_all,         generate_unit_pdf_by_unit,
-    generate_region_excel_all,     generate_region_excel_by_region,
-    generate_region_pdf_all,       generate_region_pdf_by_region,
-    generate_dpu_excel_all,        generate_dpu_excel_by_dpu,
-    generate_dpu_pdf_all,          generate_dpu_pdf_by_dpu,
+    generate_excel_all,                generate_excel_by_type,
+    generate_pdf_all,                  generate_pdf_by_type,
+    generate_stock_excel_all,          generate_stock_excel_by_type,
+    generate_stock_pdf_all,            generate_stock_pdf_by_type,
+    generate_unit_excel_all,           generate_unit_excel_by_unit,
+    generate_unit_pdf_all,             generate_unit_pdf_by_unit,
+    generate_trainingschool_excel_all, generate_trainingschool_excel_by_school,
+    generate_trainingschool_pdf_all,   generate_trainingschool_pdf_by_school,
+    generate_region_excel_all,         generate_region_excel_by_region,
+    generate_region_pdf_all,           generate_region_pdf_by_region,
+    generate_dpu_excel_all,            generate_dpu_excel_by_dpu,
+    generate_dpu_pdf_all,              generate_dpu_pdf_by_dpu,
     get_equipment_types,
 )
 
@@ -188,6 +190,54 @@ def task_unit_pdf_by_unit(self, unit_id):
         self.update_state(state="PROGRESS", meta={"current": 10, "total": 100})
         key = f"report:pdf:unit:{unit_id}"
         result = _cached_task(key, generate_unit_pdf_by_unit, CACHE_30M, unit_id)
+        self.update_state(state="PROGRESS", meta={"current": 90, "total": 100})
+        return result
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+
+# ── Training Schools ──────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=5)
+def task_trainingschool_excel_all(self):
+    try:
+        self.update_state(state="PROGRESS", meta={"current": 10, "total": 100})
+        result = _cached_task("report:xlsx:trainingschool:all", generate_trainingschool_excel_all, CACHE_30M)
+        self.update_state(state="PROGRESS", meta={"current": 90, "total": 100})
+        return result
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=5)
+def task_trainingschool_excel_by_school(self, trainingschool_id):
+    try:
+        self.update_state(state="PROGRESS", meta={"current": 10, "total": 100})
+        key = f"report:xlsx:trainingschool:{trainingschool_id}"
+        result = _cached_task(key, generate_trainingschool_excel_by_school, CACHE_30M, trainingschool_id)
+        self.update_state(state="PROGRESS", meta={"current": 90, "total": 100})
+        return result
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=5)
+def task_trainingschool_pdf_all(self):
+    try:
+        self.update_state(state="PROGRESS", meta={"current": 10, "total": 100})
+        result = _cached_task("report:pdf:trainingschool:all", generate_trainingschool_pdf_all, CACHE_30M)
+        self.update_state(state="PROGRESS", meta={"current": 90, "total": 100})
+        return result
+    except Exception as exc:
+        raise self.retry(exc=exc)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=5)
+def task_trainingschool_pdf_by_school(self, trainingschool_id):
+    try:
+        self.update_state(state="PROGRESS", meta={"current": 10, "total": 100})
+        key = f"report:pdf:trainingschool:{trainingschool_id}"
+        result = _cached_task(key, generate_trainingschool_pdf_by_school, CACHE_30M, trainingschool_id)
         self.update_state(state="PROGRESS", meta={"current": 90, "total": 100})
         return result
     except Exception as exc:

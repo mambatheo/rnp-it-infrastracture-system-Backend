@@ -6,6 +6,7 @@ from django.core.validators import MinLengthValidator, MaxLengthValidator
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
+#Territorial Units
 
 class RegionOffice(models.Model):
     id   = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -85,7 +86,7 @@ class Station(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.dpu})"
-
+#Special Units
 
 class Unit(models.Model):
     id   = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -178,6 +179,24 @@ class Office(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.department})" if self.department else self.name
+    
+#Training Schools
+
+class TrainingSchool(models.Model):
+     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+     name = models.CharField(max_length=100)
+     location = models.CharField(max_length=200)
+     
+     class Meta:
+        ordering    = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["name"], name="unique_trainingschool_name")
+        ]
+
+     def __str__(self):
+        return self.name
+     
+    
 
 
 # ─────────────────────────────────────────
@@ -266,6 +285,7 @@ class Equipment(models.Model):
     directorate = models.ForeignKey(Directorate, on_delete=models.PROTECT, null=True, blank=True, related_name="equipment")
     department  = models.ForeignKey(Department,  on_delete=models.PROTECT, null=True, blank=True, related_name="equipment")
     office      = models.ForeignKey(Office,      on_delete=models.PROTECT, null=True, blank=True, related_name="equipment")
+    training_school = models.ForeignKey(TrainingSchool, on_delete=models.PROTECT, null=True, blank=True, related_name="equipment")
 
     # ── Classification ────────────────────────────────────────────────────────
 
@@ -505,6 +525,7 @@ class Deployment(models.Model):
     issued_to_directorate  = models.ForeignKey(Directorate,  on_delete=models.PROTECT, null=True, blank=True, related_name="deployments")
     issued_to_department   = models.ForeignKey(Department,   on_delete=models.PROTECT, null=True, blank=True, related_name="deployments")
     issued_to_office       = models.ForeignKey(Office,       on_delete=models.PROTECT, null=True, blank=True, related_name="deployments")
+    issued_to_trainingschool = models.ForeignKey(TrainingSchool, on_delete=models.PROTECT, null=True, blank=True, related_name="deployements")
 
     # ── Dates ──────────────────────────────────────────────────────────────────
 
@@ -536,6 +557,7 @@ class Deployment(models.Model):
             self.issued_to_station_id,
             self.issued_to_region_office_id,
             self.issued_to_dpu_office_id,
+            self.issued_to_trainingschool_id,
         ]
         if not any(recipient_fields):
             errors["issued_to_user"] = (
@@ -614,6 +636,9 @@ class Lending(models.Model):
     region = models.ForeignKey(Region, on_delete=models.PROTECT, blank=True, null=True, related_name="region_borrower")
     dpu = models.ForeignKey(DPU, on_delete=models.PROTECT, blank=True, null=True, related_name="dpu_borrower")
     station = models.ForeignKey(Station, on_delete=models.PROTECT, blank=True, null=True, related_name="station_borrower")
+    
+    #Training School
+    training_school = models.ForeignKey(TrainingSchool, on_delete=models.PROTECT, blank=True, null=True, related_name="school_borrower")
     
     phone_number  = models.CharField(max_length=20, help_text="Borrower's phone number")
     purpose  = models.TextField(help_text="Reason for borrowing.") 

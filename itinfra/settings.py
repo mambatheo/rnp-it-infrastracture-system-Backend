@@ -74,23 +74,29 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'itinfra.wsgi.application'
 
+
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv("POSTGRES_DB", "itinfra"),
-        'USER': os.getenv("POSTGRES_USER", "postgres"),
-        'PASSWORD': os.getenv("POSTGRES_PASSWORD"), 
-        'HOST': os.getenv("DB_HOST", "db"),
-        'PORT': os.getenv("DB_PORT", "5432"),
+        'ENGINE':   'django.db.backends.postgresql',
+        'NAME':     os.getenv("POSTGRES_DB",       "itinfra"),
+        'USER':     os.getenv("POSTGRES_USER",     "postgres"),
+        'PASSWORD': os.getenv("POSTGRES_PASSWORD"),
+        'HOST':     os.getenv("DB_HOST",           "db"),
+        'PORT':     os.getenv("DB_PORT",           "5432"),
+        'OPTIONS': {
+            # Keep persistent connections — avoids re-connecting on every request
+            'connect_timeout': 10,
+        },
+        # Reuse DB connections for up to 60 s instead of opening a new one per request
+        'CONN_MAX_AGE': 60,
     }
 }
 
+# ─────────────────────────────────────────
+# AUTH
+# ─────────────────────────────────────────
 
-
-
-
-
-   
+AUTH_USER_MODEL = 'accounts.User'
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -99,22 +105,39 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-USE_I18N = True
-USE_TZ = True
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME':  timedelta(minutes=15),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
+    'ROTATE_REFRESH_TOKENS':  True,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+    'TOKEN_OBTAIN_SERIALIZER': 'rest_framework_simplejwt.serializers.TokenObtainPairSerializer',
+}
 
-STATIC_URL = 'static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
+# ─────────────────────────────────────────
+# INTERNATIONALISATION
+# ─────────────────────────────────────────
+
+LANGUAGE_CODE = 'en-us'
+TIME_ZONE     = 'UTC'
+USE_I18N      = True
+USE_TZ        = True
+
+# ─────────────────────────────────────────
+# STATIC & MEDIA
+# ─────────────────────────────────────────
+
+STATIC_URL      = 'static/'
+STATIC_ROOT     = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
-MEDIA_URL = '/media/'
+MEDIA_URL  = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-AUTH_USER_MODEL = 'accounts.User'
-
 STORAGES = {
-    # Always use the local filesystem — no cloud storage dependency.
+    # All files go to local filesystem.
     # In Docker, MEDIA_ROOT is backed by a named volume for persistence.
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
@@ -124,20 +147,11 @@ STORAGES = {
     },
 }
 
-# ── No cloud storage — all files saved to local filesystem ────────────────
-# Media files persist via the Docker named volume (media_data).
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
-    'ROTATE_REFRESH_TOKENS': True,
-    'BLACKLIST_AFTER_ROTATION': True,
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'USER_ID_FIELD': 'id',
-    'USER_ID_CLAIM': 'user_id',
-    'TOKEN_OBTAIN_SERIALIZER': 'rest_framework_simplejwt.serializers.TokenObtainPairSerializer',
-}
+# ─────────────────────────────────────────
+# REST FRAMEWORK
+# ─────────────────────────────────────────
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
@@ -159,74 +173,265 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
+# ─────────────────────────────────────────
+# CORS / CSRF
+# ─────────────────────────────────────────
+
 def get_list(value):
     return [item.strip() for item in value.split(',') if item.strip()]
 
-CORS_ALLOWED_ORIGINS = get_list(os.getenv("CORS_ALLOWED_ORIGINS", ""))
+CORS_ALLOWED_ORIGINS   = get_list(os.getenv("CORS_ALLOWED_ORIGINS", ""))
 CORS_ALLOW_CREDENTIALS = os.getenv("CORS_ALLOW_CREDENTIALS", "False") == "True"
 CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
-CORS_ALLOW_METHODS = get_list(os.getenv("CORS_ALLOW_METHODS", "DELETE,GET,OPTIONS,PATCH,POST,PUT"))
-CORS_ALLOW_HEADERS = get_list(os.getenv("CORS_ALLOW_HEADERS", "accept,accept-encoding,authorization,content-type,dnt,origin,user-agent,x-requested-with"))
-CSRF_TRUSTED_ORIGINS = get_list(os.getenv("CSRF_TRUSTED_ORIGINS", ""))
+CORS_ALLOW_METHODS     = get_list(os.getenv("CORS_ALLOW_METHODS",
+    "DELETE,GET,OPTIONS,PATCH,POST,PUT"))
+CORS_ALLOW_HEADERS     = get_list(os.getenv("CORS_ALLOW_HEADERS",
+    "accept,accept-encoding,authorization,content-type,dnt,origin,user-agent,x-requested-with"))
+CSRF_TRUSTED_ORIGINS   = get_list(os.getenv("CSRF_TRUSTED_ORIGINS", ""))
+
+# ─────────────────────────────────────────
+# API DOCS
+# ─────────────────────────────────────────
 
 SPECTACULAR_SETTINGS = {
-    'TITLE': 'IT Infrastructure Management System API',
+    'TITLE':       'IT Infrastructure Management System API',
     'DESCRIPTION': 'API documentation for IT Infrastructure Management System',
-    'VERSION': '1.0.0',
+    'VERSION':     '1.0.0',
     'SERVE_INCLUDE_SCHEMA': False,
-    'SERVE_PERMISSIONS': ['rest_framework.permissions.AllowAny'],
+    'SERVE_PERMISSIONS':    ['rest_framework.permissions.AllowAny'],
     'SERVE_AUTHENTICATION': [],
 }
 
-# Cache + Redis settings
+# ─────────────────────────────────────────
+# REDIS — three separate databases
+#   DB 0 → Celery broker  (task queue)
+#   DB 1 → Celery results (task status + file bytes)
+#   DB 2 → Django cache   (cache_page, ReportCountsView, etc.)
+# ─────────────────────────────────────────
+
 REDIS_BROKER_URL = os.getenv("REDIS_BROKER_URL", "redis://127.0.0.1:6379/0")
 REDIS_RESULT_URL = os.getenv("REDIS_RESULT_URL", "redis://127.0.0.1:6379/1")
-REDIS_CACHE_URL = os.getenv("REDIS_CACHE_URL", "redis://127.0.0.1:6379/2")
+REDIS_CACHE_URL  = os.getenv("REDIS_CACHE_URL",  "redis://127.0.0.1:6379/2")
 
 CACHES = {
     "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
+        "BACKEND":  "django_redis.cache.RedisCache",
         "LOCATION": REDIS_CACHE_URL,
         "OPTIONS": {
             "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "COMPRESSOR": "django_redis.compressors.zlib.ZlibCompressor",
+            # Compress cached values — important when caching large report payloads
+            "COMPRESSOR":   "django_redis.compressors.zlib.ZlibCompressor",
+            # Retry once on connection error instead of raising immediately
+            "IGNORE_EXCEPTIONS": False,
+            "SOCKET_CONNECT_TIMEOUT": 5,
+            "SOCKET_TIMEOUT": 5,
         },
         "KEY_PREFIX": "itinfra",
-        "TIMEOUT": 60 * 30,
+        "TIMEOUT":    60 * 30,  # 30 min default cache TTL
     }
 }
 
-# Celery settings
-CELERY_BROKER_URL         = REDIS_BROKER_URL
-CELERY_RESULT_BACKEND     = REDIS_RESULT_URL
-CELERY_ACCEPT_CONTENT     = ["json"]
-CELERY_TASK_SERIALIZER    = "json"
-CELERY_RESULT_SERIALIZER  = "json"
-CELERY_RESULT_EXPIRES       = 60 * 30   
-CELERY_TASK_TIME_LIMIT      = 600
-CELERY_TASK_SOFT_TIME_LIMIT = 540
-# Compress large report blobs before storing them in Redis
-CELERY_RESULT_COMPRESSION   = "zlib"
+# ─────────────────────────────────────────
+# CELERY — core settings
+# ─────────────────────────────────────────
 
+CELERY_BROKER_URL        = REDIS_BROKER_URL
+CELERY_RESULT_BACKEND    = REDIS_RESULT_URL
+CELERY_ACCEPT_CONTENT    = ["json"]
+CELERY_TASK_SERIALIZER   = "json"
+CELERY_RESULT_SERIALIZER = "json"
 
-CELERY_TASK_QUEUES = {
-    "celery":  {"exchange": "celery",  "routing_key": "celery"},
-    "prewarm": {"exchange": "prewarm", "routing_key": "prewarm"},
-}
+# How long to keep task results in Redis before auto-deleting
 
-CELERY_TASK_ROUTES = {
-    "equipment.tasks.prewarm_*": {"queue": "prewarm", "routing_key": "prewarm"},
-}
+CELERY_RESULT_EXPIRES = 60 * 60 * 2
 
-CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
-CELERY_BEAT_SCHEDULE = {
-  
-    "prewarm-all-reports": {
-        "task": "equipment.tasks.prewarm_all_reports",
-        "schedule": crontab(minute="*/20"),   # :00, :20, :40 of every hour
+# Compress large report blobs (base64 xlsx/pdf) before storing in Redis
+CELERY_RESULT_COMPRESSION = "zlib"
+
+# ── Default time limits (for small/fast tasks) ────────────────────
+# Report tasks override these individually via CELERY_TASK_ANNOTATIONS below
+CELERY_TASK_TIME_LIMIT      = 600   
+CELERY_TASK_SOFT_TIME_LIMIT = 540   
+
+# ── Per-task time limits ──────────────────────────────────────────
+
+CELERY_TASK_ANNOTATIONS = {
+    # ── Full-dataset Excel reports (13M+ rows) ─────────────────────────
+    'equipment.tasks.task_excel_all': {
+        'time_limit':      3600,   # 60 min hard kill
+        'soft_time_limit': 3540,   # 59 min soft warning
+    },
+    'equipment.tasks.task_stock_excel_all': {
+        'time_limit':      1800,
+        'soft_time_limit': 1740,
+    },
+    'equipment.tasks.task_unit_excel_all': {
+        'time_limit':      3600,
+        'soft_time_limit': 3540,
+    },
+    'equipment.tasks.task_region_excel_all': {
+        'time_limit':      3600,
+        'soft_time_limit': 3540,
+    },
+    'equipment.tasks.task_dpu_excel_all': {
+        'time_limit':      3600,
+        'soft_time_limit': 3540,
+    },
+    'equipment.tasks.task_trainingschool_excel_all': {
+        'time_limit':      1800,
+        'soft_time_limit': 1740,
+    },
+
+    # ── Full-dataset PDF reports ───────────────────────────────────────
+ 
+    'equipment.tasks.task_pdf_all': {
+        'time_limit':      600,
+        'soft_time_limit': 540,
+    },
+    'equipment.tasks.task_stock_pdf_all': {
+        'time_limit':      600,
+        'soft_time_limit': 540,
+    },
+    'equipment.tasks.task_unit_pdf_all': {
+        'time_limit':      3600,
+        'soft_time_limit': 3540,
+    },
+    'equipment.tasks.task_region_pdf_all': {
+        'time_limit':      3600,
+        'soft_time_limit': 3540,
+    },
+    'equipment.tasks.task_dpu_pdf_all': {
+        'time_limit':      3600,
+        'soft_time_limit': 3540,
+    },
+    'equipment.tasks.task_trainingschool_pdf_all': {
+        'time_limit':      1800,
+        'soft_time_limit': 1740,
+    },
+
+    # ── Per-type Excel reports ─────────────────────────────────────────
+    # Each type has ~1M rows (13M / ~13 types) — 20 min is enough
+    'equipment.tasks.task_excel_by_type': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+    'equipment.tasks.task_stock_excel_by_type': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+
+    # ── Per-type PDF reports ───────────────────────────────────────────
+    'equipment.tasks.task_pdf_by_type': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+    'equipment.tasks.task_stock_pdf_by_type': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+
+    # ── Per-location reports ───────────────────────────────────────────
+    'equipment.tasks.task_unit_excel_by_unit': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+    'equipment.tasks.task_unit_pdf_by_unit': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+    'equipment.tasks.task_region_excel_by_region': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+    'equipment.tasks.task_region_pdf_by_region': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+    'equipment.tasks.task_dpu_excel_by_dpu': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+    'equipment.tasks.task_dpu_pdf_by_dpu': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+    'equipment.tasks.task_trainingschool_excel_by_school': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
+    },
+    'equipment.tasks.task_trainingschool_pdf_by_school': {
+        'time_limit':      1200,
+        'soft_time_limit': 1140,
     },
 }
 
+# ── Queues ────────────────────────────────────────────────────────
 
-REPORT_DOWNLOAD_TOKEN_MAX_AGE_SECONDS = int(os.getenv("REPORT_DOWNLOAD_TOKEN_MAX_AGE_SECONDS", str(60 * 60 * 24)))  # 24h
-REPORT_DOWNLOAD_TOKEN_SALT = os.getenv("REPORT_DOWNLOAD_TOKEN_SALT", "report-download-v1")
+
+CELERY_TASK_QUEUES = (
+    Queue('default', Exchange('default'), routing_key='default'),
+    Queue('reports', Exchange('reports'), routing_key='reports'),
+    Queue('prewarm', Exchange('prewarm'), routing_key='prewarm'),
+)
+
+CELERY_TASK_DEFAULT_QUEUE       = 'default'
+CELERY_TASK_DEFAULT_EXCHANGE    = 'default'
+CELERY_TASK_DEFAULT_ROUTING_KEY = 'default'
+
+CELERY_TASK_ROUTES = {
+    # ── All report tasks → reports queue ──────────────────────────
+    'equipment.tasks.task_excel_all':                     {'queue': 'reports'},
+    'equipment.tasks.task_excel_by_type':                 {'queue': 'reports'},
+    'equipment.tasks.task_pdf_all':                       {'queue': 'reports'},
+    'equipment.tasks.task_pdf_by_type':                   {'queue': 'reports'},
+    'equipment.tasks.task_stock_excel_all':               {'queue': 'reports'},
+    'equipment.tasks.task_stock_excel_by_type':           {'queue': 'reports'},
+    'equipment.tasks.task_stock_pdf_all':                 {'queue': 'reports'},
+    'equipment.tasks.task_stock_pdf_by_type':             {'queue': 'reports'},
+    'equipment.tasks.task_unit_excel_all':                {'queue': 'reports'},
+    'equipment.tasks.task_unit_excel_by_unit':            {'queue': 'reports'},
+    'equipment.tasks.task_unit_pdf_all':                  {'queue': 'reports'},
+    'equipment.tasks.task_unit_pdf_by_unit':              {'queue': 'reports'},
+    'equipment.tasks.task_region_excel_all':              {'queue': 'reports'},
+    'equipment.tasks.task_region_excel_by_region':        {'queue': 'reports'},
+    'equipment.tasks.task_region_pdf_all':                {'queue': 'reports'},
+    'equipment.tasks.task_region_pdf_by_region':          {'queue': 'reports'},
+    'equipment.tasks.task_dpu_excel_all':                 {'queue': 'reports'},
+    'equipment.tasks.task_dpu_excel_by_dpu':              {'queue': 'reports'},
+    'equipment.tasks.task_dpu_pdf_all':                   {'queue': 'reports'},
+    'equipment.tasks.task_dpu_pdf_by_dpu':                {'queue': 'reports'},
+    'equipment.tasks.task_trainingschool_excel_all':      {'queue': 'reports'},
+    'equipment.tasks.task_trainingschool_excel_by_school':{'queue': 'reports'},
+    'equipment.tasks.task_trainingschool_pdf_all':        {'queue': 'reports'},
+    'equipment.tasks.task_trainingschool_pdf_by_school':  {'queue': 'reports'},
+
+    # ── Pre-warm tasks → prewarm queue ────────────────────────────
+    'equipment.tasks.prewarm_all_reports':                {'queue': 'prewarm'},
+}
+
+# ── Celery Beat (scheduled tasks) ────────────────────────────────
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+CELERY_BEAT_SCHEDULE  = {
+
+    "prewarm-all-reports": {
+        "task":     "equipment.tasks.prewarm_all_reports",
+        "schedule": crontab(minute="*/20"),  # :00, :20, :40 of every hour
+    },
+}
+
+# ── Celery worker behaviour ───────────────────────────────────────
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
+
+CELERY_WORKER_MAX_TASKS_PER_CHILD = 50
+
+# ─────────────────────────────────────────
+# REPORT DOWNLOAD TOKEN
+# ─────────────────────────────────────────
+
+REPORT_DOWNLOAD_TOKEN_MAX_AGE_SECONDS = int(
+    os.getenv("REPORT_DOWNLOAD_TOKEN_MAX_AGE_SECONDS", str(60 * 60 * 24))  # 24 hours
+)
+REPORT_DOWNLOAD_TOKEN_SALT = os.getenv(
+    "REPORT_DOWNLOAD_TOKEN_SALT", "report-download-v1"
+)

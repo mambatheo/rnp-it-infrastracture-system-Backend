@@ -4,7 +4,7 @@ from .models import (
     RegionOffice, Region, DPUOffice, DPU, Station,
     Unit, Directorate, Department, Office,
     EquipmentCategory, EquipmentStatus, Brand,
-    Equipment, Stock, Deployment, Lending,
+    Equipment, Stock, Deployment, Lending, TrainingSchool,
 )
 
 
@@ -86,7 +86,10 @@ class OfficeSerializer(serializers.ModelSerializer):
         ]
 
 
-
+class TrainingSchoolSerializer(serializers.ModelSerializer):
+    class Meta:
+        model  = TrainingSchool
+        fields = ["id", "name", "location"]
 
 class EquipmentCategorySerializer(serializers.ModelSerializer):
     class Meta:
@@ -114,15 +117,16 @@ class EquipmentSerializer(serializers.ModelSerializer):
 
     equipment_type_name = serializers.CharField(source="equipment_type.name", read_only=True)
 
-    brand_name       = serializers.CharField(source="brand.name",       read_only=True)
-    status_name      = serializers.CharField(source="status.name",      read_only=True)
-    region_name      = serializers.CharField(source="region.name",      read_only=True)
-    dpu_name         = serializers.CharField(source="dpu.name",         read_only=True)
-    station_name     = serializers.CharField(source="station.name",     read_only=True)
-    unit_name        = serializers.CharField(source="unit.name",        read_only=True)
-    directorate_name = serializers.CharField(source="directorate.name", read_only=True)
-    department_name  = serializers.CharField(source="department.name",  read_only=True)
-    office_name      = serializers.CharField(source="office.name",      read_only=True)
+    brand_name            = serializers.CharField(source="brand.name",            read_only=True)
+    status_name           = serializers.CharField(source="status.name",           read_only=True)
+    region_name           = serializers.CharField(source="region.name",           read_only=True)
+    dpu_name              = serializers.CharField(source="dpu.name",              read_only=True)
+    station_name          = serializers.CharField(source="station.name",          read_only=True)
+    unit_name             = serializers.CharField(source="unit.name",             read_only=True)
+    directorate_name      = serializers.CharField(source="directorate.name",      read_only=True)
+    department_name       = serializers.CharField(source="department.name",       read_only=True)
+    office_name           = serializers.CharField(source="office.name",           read_only=True)
+    training_school_name  = serializers.CharField(source="training_school.name",  read_only=True)
 
     created_by_name = serializers.SerializerMethodField()
     updated_by_name = serializers.SerializerMethodField()
@@ -201,15 +205,16 @@ class DeploymentSerializer(serializers.ModelSerializer):
     equipment_type   = serializers.CharField(source="equipment.equipment_type.name", read_only=True)
 
     # Org-level recipient labels
-    issued_to_region_office_name = serializers.CharField(source="issued_to_region_office.name", read_only=True)
-    issued_to_region_name        = serializers.CharField(source="issued_to_region.name",        read_only=True)
-    issued_to_dpu_office_name    = serializers.CharField(source="issued_to_dpu_office.name",    read_only=True)
-    issued_to_dpu_name           = serializers.CharField(source="issued_to_dpu.name",           read_only=True)
-    issued_to_station_name       = serializers.CharField(source="issued_to_station.name",       read_only=True)
-    issued_to_unit_name          = serializers.CharField(source="issued_to_unit.name",          read_only=True)
-    issued_to_directorate_name   = serializers.CharField(source="issued_to_directorate.name",   read_only=True)
-    issued_to_department_name    = serializers.CharField(source="issued_to_department.name",    read_only=True)
-    issued_to_office_name        = serializers.CharField(source="issued_to_office.name",        read_only=True)
+    issued_to_region_office_name    = serializers.CharField(source="issued_to_region_office.name",    read_only=True)
+    issued_to_region_name           = serializers.CharField(source="issued_to_region.name",           read_only=True)
+    issued_to_dpu_office_name       = serializers.CharField(source="issued_to_dpu_office.name",       read_only=True)
+    issued_to_dpu_name              = serializers.CharField(source="issued_to_dpu.name",              read_only=True)
+    issued_to_station_name          = serializers.CharField(source="issued_to_station.name",          read_only=True)
+    issued_to_unit_name             = serializers.CharField(source="issued_to_unit.name",             read_only=True)
+    issued_to_directorate_name      = serializers.CharField(source="issued_to_directorate.name",      read_only=True)
+    issued_to_department_name       = serializers.CharField(source="issued_to_department.name",       read_only=True)
+    issued_to_office_name           = serializers.CharField(source="issued_to_office.name",           read_only=True)
+    issued_to_trainingschool_name   = serializers.CharField(source="issued_to_trainingschool.name",   read_only=True)
 
     # Audit label
     issued_by_name = serializers.SerializerMethodField()
@@ -221,15 +226,16 @@ class DeploymentSerializer(serializers.ModelSerializer):
             "status",
             # Recipients
             "issued_to_user",
-            "issued_to_region_office", "issued_to_region_office_name",
-            "issued_to_region",        "issued_to_region_name",
-            "issued_to_dpu_office",    "issued_to_dpu_office_name",
-            "issued_to_dpu",           "issued_to_dpu_name",
-            "issued_to_station",       "issued_to_station_name",
-            "issued_to_unit",          "issued_to_unit_name",
-            "issued_to_directorate",   "issued_to_directorate_name",
-            "issued_to_department",    "issued_to_department_name",
-            "issued_to_office",        "issued_to_office_name",
+            "issued_to_region_office",  "issued_to_region_office_name",
+            "issued_to_region",         "issued_to_region_name",
+            "issued_to_dpu_office",     "issued_to_dpu_office_name",
+            "issued_to_dpu",            "issued_to_dpu_name",
+            "issued_to_station",        "issued_to_station_name",
+            "issued_to_unit",           "issued_to_unit_name",
+            "issued_to_directorate",    "issued_to_directorate_name",
+            "issued_to_department",     "issued_to_department_name",
+            "issued_to_office",         "issued_to_office_name",
+            "issued_to_trainingschool", "issued_to_trainingschool_name",
             # Dates & notes
             "issued_date", "comments",
             # Audit
@@ -243,15 +249,17 @@ class DeploymentSerializer(serializers.ModelSerializer):
     
 class LendingSerializer(serializers.ModelSerializer):
 
-    equipment_name         = serializers.CharField(source="equipment.name",           read_only=True)
-    equipment_serial       = serializers.CharField(source="equipment.serial_number",  read_only=True)
+    equipment_name         = serializers.CharField(source="equipment.name",                read_only=True)
+    equipment_serial       = serializers.CharField(source="equipment.serial_number",       read_only=True)
     equipment_type         = serializers.CharField(source="equipment.equipment_type.name", read_only=True)
-    equipment_marking_code = serializers.CharField(source="equipment.marking_code",   read_only=True)
-    equipment_brand        = serializers.CharField(source="equipment.brand.name",     read_only=True)
-    station = serializers.CharField(source="equipment.station.name", read_only=True)
-    dpu = serializers.CharField(source="equipment.dpu.name", read_only=True)
-    region = serializers.CharField(source="equipment.region.name", read_only=True)
-    unit = serializers.CharField(source="equipment.unit.name", read_only=True)
+    equipment_marking_code = serializers.CharField(source="equipment.marking_code",        read_only=True)
+    equipment_brand        = serializers.CharField(source="equipment.brand.name",          read_only=True)
+
+    station_name          = serializers.CharField(source="station.name",          read_only=True)
+    dpu_name              = serializers.CharField(source="dpu.name",              read_only=True)
+    region_name           = serializers.CharField(source="region.name",           read_only=True)
+    unit_name             = serializers.CharField(source="unit.name",             read_only=True)
+    training_school_name  = serializers.CharField(source="training_school.name",  read_only=True)
 
     issued_by_name           = serializers.SerializerMethodField()
     return_confirmed_by_name = serializers.SerializerMethodField()
@@ -260,14 +268,18 @@ class LendingSerializer(serializers.ModelSerializer):
         model  = Lending
         fields = [
             "id", "equipment", "equipment_name", "equipment_serial", "equipment_type",
-            "equipment_brand", "equipment_marking_code",   
+            "equipment_brand", "equipment_marking_code",
             "status",
             # Borrower
             "borrower_name", "phone_number", "purpose",
-            #Special Unit
-            "unit",
-            #Territorial Units
-            "station", "dpu", "region",
+            # Special Unit
+            "unit",             "unit_name",
+            # Territorial Units
+            "station",          "station_name",
+            "dpu",              "dpu_name",
+            "region",           "region_name",
+            # Training School
+            "training_school",  "training_school_name",
             # Dates
             "issued_date", "returned_date",
             # Return details

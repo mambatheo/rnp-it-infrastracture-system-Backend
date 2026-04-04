@@ -21,7 +21,7 @@ from .models import (
     RegionOffice, Region, DPUOffice, DPU, Station,
     Unit, Directorate, Department, Office,
     EquipmentCategory, EquipmentStatus, Brand,
-    Equipment, Stock, Deployment, Lending,
+    Equipment, Stock, Deployment, Lending, TrainingSchool,
 )
 from .serializers import (
     RegionOfficeSerializer, RegionSerializer,
@@ -29,19 +29,21 @@ from .serializers import (
     StationSerializer,
     UnitSerializer, DirectorateSerializer, DepartmentSerializer, OfficeSerializer,
     EquipmentCategorySerializer, EquipmentStatusSerializer, BrandSerializer,
-    EquipmentSerializer, StockSerializer, DeploymentSerializer, LendingSerializer,
+    EquipmentSerializer, StockSerializer, DeploymentSerializer, LendingSerializer,TrainingSchoolSerializer,
 )
 from .tasks import (
-    task_excel_all,            task_excel_by_type,
-    task_pdf_all,              task_pdf_by_type,
-    task_stock_excel_all,      task_stock_excel_by_type,
-    task_stock_pdf_all,        task_stock_pdf_by_type,
-    task_unit_excel_all,       task_unit_excel_by_unit,
-    task_unit_pdf_all,         task_unit_pdf_by_unit,
-    task_region_excel_all,     task_region_excel_by_region,
-    task_region_pdf_all,       task_region_pdf_by_region,
-    task_dpu_excel_all,        task_dpu_excel_by_dpu,
-    task_dpu_pdf_all,          task_dpu_pdf_by_dpu,
+    task_excel_all,                task_excel_by_type,
+    task_pdf_all,                  task_pdf_by_type,
+    task_stock_excel_all,          task_stock_excel_by_type,
+    task_stock_pdf_all,            task_stock_pdf_by_type,
+    task_unit_excel_all,           task_unit_excel_by_unit,
+    task_unit_pdf_all,             task_unit_pdf_by_unit,
+    task_trainingschool_excel_all, task_trainingschool_excel_by_school,
+    task_trainingschool_pdf_all,   task_trainingschool_pdf_by_school,
+    task_region_excel_all,         task_region_excel_by_region,
+    task_region_pdf_all,           task_region_pdf_by_region,
+    task_dpu_excel_all,            task_dpu_excel_by_dpu,
+    task_dpu_pdf_all,              task_dpu_pdf_by_dpu,
 )
 
 # ─────────────────────────────────────────
@@ -57,10 +59,7 @@ def _is_privileged(user):
 
 
 def _location_q(user):
-    """
-    Build a Q filter matching equipment assigned to the user's location.
-    USER / TECHNICIAN can be assigned to dpu, region, and/or unit.
-    """
+   
     q = Q()
     if getattr(user, "dpu_id", None):
         q |= Q(dpu=user.dpu)
@@ -161,6 +160,15 @@ class OfficeViewSet(viewsets.ModelViewSet):
     filterset_fields   = ["department", "region", "dpu"]
     search_fields      = ["name"]
 
+@extend_schema(tags=["Training Schools"])
+class TrainingSchoolViewSet(viewsets.ModelViewSet):
+    queryset           = TrainingSchool.objects.all()
+    serializer_class   = TrainingSchoolSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends    = [filters.SearchFilter]
+    search_fields      = ["name"]  
+
+
 
 # ─────────────────────────────────────────
 # CLASSIFICATION VIEWSETS
@@ -226,56 +234,37 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         "unit":                 ["exact"],
         "directorate":          ["exact"],
         "department":           ["exact"],
-        "office":               ["exact"],
+        "office":               ["exact"],                                
+        "training_school":      ["exact"],
         "brand":                ["exact"],
     }
 
     search_fields = [
         "name", "serial_number", "marking_code",
         "model", "comments",
-        "brand__name", "region__name", "dpu__name", "office__name",
+        "brand__name", "region__name", "dpu__name", "office__name", "training_school__name",
     ]
 
     ordering_fields = ["created_at", "deployment_date", "name"]
     ordering        = ["-created_at"]
 
-    # Columns needed for the list table view
-    _LIST_ONLY = [
-        "id", "name", "model", "serial_number", "marking_code",
-        "equipment_type__name",
-        "brand__name",
-        "status__name",
-        "region__name", "dpu__name", "station__name",
-        "deployment_date",
-        "created_at",
-    ]
-
     def get_queryset(self):
-        base_qs = Equipment.objects.select_related(
+        qs = Equipment.objects.select_related(
             "equipment_type",
             "brand", "status",
             "region", "dpu", "station",
-            "unit", "directorate", "department", "office",
+            "unit", "directorate", "department", "office", "training_school",
             "created_by", "updated_by",
-        )
+        ).prefetch_related("stock")
 
         user = self.request.user
         if _is_privileged(user):
-            qs = base_qs
-        else:
-            loc_q = _location_q(user)
-            if not loc_q:
-                return base_qs.none()
-            qs = base_qs.filter(loc_q)
+            return qs
 
-        # For list actions: skip unused spec columns and the stock prefetch
-        # to keep the query lean.  Detail/update still get all columns.
-        if self.action == "list":
-            return qs  # full select_related but no prefetch_related
-
-        # retrieve / update / partial_update / destroy — include stock
-        return qs.prefetch_related("stock")
-
+        loc_q = _location_q(user)
+        if not loc_q:
+            return qs.none()
+        return qs.filter(loc_q)
 
     def perform_create(self, serializer):
         serializer.save(
@@ -358,6 +347,7 @@ class DeploymentViewSet(viewsets.ModelViewSet):
         "issued_to_directorate":           ["exact"],
         "issued_to_department":            ["exact"],
         "issued_to_office":                ["exact"],
+        "issued_to_trainingschool":        ["exact"],
         "issued_date":                     ["exact", "gte", "lte"],
     }
 
@@ -366,7 +356,7 @@ class DeploymentViewSet(viewsets.ModelViewSet):
         "issued_to_user",
         "issued_to_region__name", "issued_to_dpu__name",
         "issued_to_unit__name", "issued_to_directorate__name",
-        "issued_to_department__name", "issued_to_office__name",
+        "issued_to_department__name", "issued_to_office__name", "issued_to_trainingschool__name",
         "comments",
     ]
 
@@ -380,7 +370,7 @@ class DeploymentViewSet(viewsets.ModelViewSet):
             "issued_to_region", "issued_to_dpu_office", "issued_to_dpu",
             "issued_to_station",
             "issued_to_unit", "issued_to_directorate",
-            "issued_to_department", "issued_to_office",
+            "issued_to_department", "issued_to_office", "issued_to_trainingschool",
             "issued_by",
         )
 
@@ -398,6 +388,9 @@ class DeploymentViewSet(viewsets.ModelViewSet):
         if getattr(user, "unit_id", None):
             q |= Q(issued_to_unit=user.unit)
             q |= Q(equipment__unit=user.unit)
+        if getattr(user, "training_school_id", None):
+            q |= Q(issued_to_training_school=user.training_school)
+            q |= Q(equipment__training_school=user.training_school)
         if not q:
             return qs.none()
         return qs.filter(q)
@@ -437,7 +430,7 @@ class LendingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = Lending.objects.select_related(
             "equipment__brand", "equipment__status", "equipment__equipment_type",
-            "equipment__region", "equipment__dpu", "equipment__unit",
+            "equipment__region", "equipment__dpu", "equipment__unit", "equipment__training_school",
             "issued_by", "return_confirmed_by",
         )
 
@@ -452,6 +445,9 @@ class LendingViewSet(viewsets.ModelViewSet):
             q |= Q(equipment__region=user.region)
         if getattr(user, "unit_id", None):
             q |= Q(equipment__unit=user.unit)
+        if getattr(user, "training_school_id", None):
+            q |= Q(issued_to_training_school=user.training_school)
+            q |= Q(equipment__training_school=user.training_school)
         if not q:
             return qs.none()
         return qs.filter(q)
@@ -478,10 +474,7 @@ def _user_from_token_param(request):
 
 
 def _user_from_download_token_param(request):
-    """
-    Authenticate via ?dl_token= signed token.
-    This is intentionally independent of JWT so downloads can continue after access-token expiry/logout.
-    """
+    
     token = request.query_params.get("dl_token")
     if not token:
         return None
@@ -679,6 +672,32 @@ class UnitPDFReportView(_ReportBaseView):
         if unit_id:
             return _enqueue_response(request, task_unit_pdf_by_unit, str(unit_id))
         return _enqueue_response(request, task_unit_pdf_all)
+@extend_schema(tags=["Reports"])
+class TrainingSchoolExcelReportView(_ReportBaseView):
+    def get(self, request, trainingschool_id=None):
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
+        filename = f"trainingschool_{trainingschool_id or 'all'}_{today}.xlsx"
+
+        if task_id:
+            return _poll_or_download(request, task_id, filename, XLSX_CT)
+        if trainingschool_id:
+            return _enqueue_response(request, task_trainingschool_excel_by_school, str(trainingschool_id))
+        return _enqueue_response(request, task_trainingschool_excel_all)
+
+
+@extend_schema(tags=["Reports"])
+class TrainingSchoolPDFReportView(_ReportBaseView):
+    def get(self, request, trainingschool_id=None):
+        today    = timezone.now().strftime("%Y%m%d")
+        task_id  = request.query_params.get("task_id")
+        filename = f"trainingschool_{trainingschool_id or 'all'}_{today}.pdf"
+
+        if task_id:
+            return _poll_or_download(request, task_id, filename, PDF_CT)
+        if trainingschool_id:
+            return _enqueue_response(request, task_trainingschool_pdf_by_school, str(trainingschool_id))
+        return _enqueue_response(request, task_trainingschool_pdf_all)
 
 
 # ── Region reports ────────────────────────────────────────────────────────────

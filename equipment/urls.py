@@ -7,6 +7,7 @@ from .views import (
     # Location
     RegionViewSet, DPUViewSet, StationViewSet,
     UnitViewSet, DirectorateViewSet, DepartmentViewSet, OfficeViewSet,
+    TrainingSchoolViewSet,
     # Lookups
     EquipmentCategoryViewSet, EquipmentStatusViewSet, BrandViewSet,
     # Equipment / Stock / Deployment / Lendings
@@ -14,7 +15,10 @@ from .views import (
     # Reports
     EquipmentExcelReportView, EquipmentPDFReportView,
     StockExcelReportView, StockPDFReportView,
-    UnitExcelReportView, UnitPDFReportView, RegionExcelReportView, RegionPDFReportView, DPUExcelReportView, DPUPDFReportView,
+    UnitExcelReportView, UnitPDFReportView,
+    TrainingSchoolExcelReportView, TrainingSchoolPDFReportView,
+    RegionExcelReportView, RegionPDFReportView,
+    DPUExcelReportView, DPUPDFReportView,
     ReportCountsView,
 )
 
@@ -32,6 +36,7 @@ router.register(r"units",            UnitViewSet)
 router.register(r"directorates",     DirectorateViewSet)
 router.register(r"departments",      DepartmentViewSet)
 router.register(r"offices",          OfficeViewSet)
+router.register(r"training-schools", TrainingSchoolViewSet, basename="training-school")
 
 # ── Lookups ───────────────────────────────────────────
 router.register(r"equipment-categories", EquipmentCategoryViewSet)
@@ -79,6 +84,16 @@ urlpatterns = [
     path("reports/unit/pdf/<uuid:unit_id>/",
          UnitPDFReportView.as_view(),        name="report-unit-pdf-by-unit"),
     
+    # ── Reports — Training School-based ───────────────────────────
+    path("reports/training-school/excel/",
+         TrainingSchoolExcelReportView.as_view(),      name="report-trainingschool-excel-all"),
+    path("reports/training-school/excel/<uuid:trainingschool_id>/",
+         TrainingSchoolExcelReportView.as_view(),      name="report-trainingschool-excel-by-school"),
+    path("reports/training-school/pdf/",
+         TrainingSchoolPDFReportView.as_view(),        name="report-trainingschool-pdf-all"),
+    path("reports/training-school/pdf/<uuid:trainingschool_id>/",
+         TrainingSchoolPDFReportView.as_view(),        name="report-trainingschool-pdf-by-school"),
+
     # ── Reports — Region-based ───────────────────────────
     path("reports/region/excel/",
          RegionExcelReportView.as_view(),      name="report-region-excel-all"),
