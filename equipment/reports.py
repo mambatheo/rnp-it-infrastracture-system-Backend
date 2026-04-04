@@ -4,7 +4,7 @@ reports.py — 100 M-row-safe report generation
   • PyExcelerate            — constant-memory Excel, ~500 K rows/sec
   • ReportLab (chunked)    — PDF, 40 rows per table block
   • All generators write to disk (output_path) and return row_count
-  • Summary columns are DYNAMIC — fetched from equipment_equipmentstatus,
+  • Summary columns are DYNAMIC — fetched from equipment_status,
     never hardcoded.
 """
 import io
@@ -130,6 +130,7 @@ def _build_location_sql(row):
         parts = [row["region_name"]]
         if row.get("region_office_name"): parts.append(row["region_office_name"])
         return ", ".join(parts)
+    if row.get("training_school_name"): return row["training_school_name"]
     return "—"
 
 
@@ -159,7 +160,7 @@ def get_equipment_types():
         cur.execute("""
             SELECT DISTINCT cat.name
             FROM equipment e
-            JOIN equipment_equipmentcategory cat ON cat.id = e.equipment_type_id
+            JOIN equipment_category cat ON cat.id = e.equipment_type_id
             WHERE cat.name IS NOT NULL ORDER BY cat.name
         """)
         return [r[0] for r in cur.fetchall()]
@@ -184,20 +185,22 @@ _EQ_SELECT = """
         u.name    AS unit_name,
         dir.name  AS directorate_name,
         dep.name  AS department_name,
-        o.name    AS office_name
+        o.name    AS office_name,
+        ts.name   AS training_school_name
     FROM equipment e
-    LEFT JOIN equipment_equipmentcategory cat ON cat.id  = e.equipment_type_id
-    LEFT JOIN equipment_brand             b   ON b.id    = e.brand_id
-    LEFT JOIN equipment_equipmentstatus   s   ON s.id    = e.status_id
-    LEFT JOIN equipment_region            r   ON r.id    = e.region_id
-    LEFT JOIN equipment_regionoffice      ro  ON ro.id   = r.region_office_id
-    LEFT JOIN equipment_dpu               d   ON d.id    = e.dpu_id
-    LEFT JOIN equipment_dpuoffice         dpo ON dpo.id  = d.dpu_office_id
-    LEFT JOIN equipment_station           st  ON st.id   = e.station_id
-    LEFT JOIN equipment_unit              u   ON u.id    = e.unit_id
-    LEFT JOIN equipment_directorate       dir ON dir.id  = e.directorate_id
-    LEFT JOIN equipment_department        dep ON dep.id  = e.department_id
-    LEFT JOIN equipment_office            o   ON o.id    = e.office_id"""
+    LEFT JOIN equipment_category      cat ON cat.id  = e.equipment_type_id
+    LEFT JOIN equipment_brand         b   ON b.id    = e.brand_id
+    LEFT JOIN equipment_status        s   ON s.id    = e.status_id
+    LEFT JOIN equipment_region        r   ON r.id    = e.region_id
+    LEFT JOIN equipment_regionoffice  ro  ON ro.id   = r.region_office_id
+    LEFT JOIN equipment_dpu           d   ON d.id    = e.dpu_id
+    LEFT JOIN equipment_dpuoffice     dpo ON dpo.id  = d.dpu_office_id
+    LEFT JOIN equipment_station       st  ON st.id   = e.station_id
+    LEFT JOIN equipment_unit          u   ON u.id    = e.unit_id
+    LEFT JOIN equipment_directorate   dir ON dir.id  = e.directorate_id
+    LEFT JOIN equipment_department    dep ON dep.id  = e.department_id
+    LEFT JOIN equipment_office        o   ON o.id    = e.office_id
+    LEFT JOIN equipment_trainingschool ts ON ts.id   = e.training_school_id"""
 
 
 def _stream_sql(sql, params=(), chunk_size=SQL_CHUNK):
@@ -252,10 +255,10 @@ def stream_stock_rows(filters=None, chunk_size=SQL_CHUNK):
                s.name AS status_name, sk.condition, sk.date_added,
                cat.name AS equipment_type_name
         FROM stock sk
-        JOIN equipment                        e   ON e.id   = sk.equipment_id
-        LEFT JOIN equipment_equipmentcategory cat ON cat.id = e.equipment_type_id
-        LEFT JOIN equipment_brand             b   ON b.id   = e.brand_id
-        LEFT JOIN equipment_equipmentstatus   s   ON s.id   = e.status_id
+        JOIN equipment                   e   ON e.id   = sk.equipment_id
+        LEFT JOIN equipment_category     cat ON cat.id = e.equipment_type_id
+        LEFT JOIN equipment_brand        b   ON b.id   = e.brand_id
+        LEFT JOIN equipment_status       s   ON s.id   = e.status_id
         {where} ORDER BY cat.name, e.model"""
     yield from _stream_sql(sql, params, chunk_size)
 
@@ -266,13 +269,13 @@ def stream_stock_rows(filters=None, chunk_size=SQL_CHUNK):
 
 def get_all_statuses() -> list:
     """
-    Fetch every real status name from equipment_equipmentstatus.
+    Fetch every real status name from equipment_status.
     Never hardcoded — always reflects what is actually in the database.
     Returns e.g. ['Active', 'Damaged', 'Faulty', 'New', 'Retired', 'Under Repair']
     """
     with connection.cursor() as cur:
         cur.execute(
-            "SELECT name FROM equipment_equipmentstatus ORDER BY name"
+            "SELECT name FROM equipment_status ORDER BY name"
         )
         return [row[0] for row in cur.fetchall()]
 
@@ -280,7 +283,7 @@ def get_all_statuses() -> list:
 def get_summary_sql() -> list:
     """
     Returns per-equipment-type counts broken down by REAL statuses from the DB.
-    Columns are never hardcoded — they are built from equipment_equipmentstatus.
+    Columns are never hardcoded — they are built from equipment_status.
 
     Result format:
     [
@@ -305,8 +308,8 @@ def get_summary_sql() -> list:
             s.name    AS status_name,
             COUNT(*)  AS cnt
         FROM equipment e
-        JOIN  equipment_equipmentcategory cat ON cat.id = e.equipment_type_id
-        LEFT JOIN equipment_equipmentstatus   s   ON s.id  = e.status_id
+        JOIN  equipment_category  cat ON cat.id = e.equipment_type_id
+        LEFT JOIN equipment_status s  ON s.id   = e.status_id
         GROUP BY cat.name, s.name
         ORDER BY cat.name, s.name
     """
@@ -332,7 +335,7 @@ def get_stock_summary_sql():
         SELECT cat.name AS eq_type, COUNT(*) AS total
         FROM stock sk
         JOIN equipment e ON e.id = sk.equipment_id
-        JOIN equipment_equipmentcategory cat ON cat.id = e.equipment_type_id
+        JOIN equipment_category cat ON cat.id = e.equipment_type_id
         GROUP BY cat.name ORDER BY cat.name"""
     return list(_stream_sql(sql, chunk_size=10_000))
 
