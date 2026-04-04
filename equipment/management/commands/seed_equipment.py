@@ -29,7 +29,7 @@ from equipment.models import (
     Equipment, EquipmentCategory, EquipmentStatus, Brand,
     Region, DPU, Station,
     Unit, Directorate, Department, Office,
-    Stock, Deployment, Lending,
+    Stock, Deployment, Lending, TrainingSchool,
 )
 
 try:
@@ -315,38 +315,22 @@ _FALLBACK_MODELS = ['Model A', 'Model B', 'Model C', 'Model X', 'Model Pro', 'Mo
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
 
-# Pre-built alphabet pool for serials — avoids repeated string.digits call
-_DIGITS = string.digits
+_DIGITS          = string.digits
 _SERIAL_PREFIXES = ['SN', 'SER', 'SRL', 'EQ', 'RNP']
-_DEPT_CODES      = ['ICT', 'RNP', 'HQ', 'OPS', 'FIN', 'LOG', 'ADM']
 
 
 def _random_serial():
-    """
-    Generate a serial number.
-    FIX: dropped the Python-set deduplication loop from the original — at 1M
-    rows it bloated RAM and slowed linearly. We rely instead on the DB unique
-    constraint + bulk_create(ignore_conflicts=True), which is both faster and
-    correct.  The 14-character space (5 prefixes × 10^10 digits) gives a
-    collision probability well under 0.01% even at 1 M rows per run.
-    """
     prefix = random.choice(_SERIAL_PREFIXES)
     digits = ''.join(random.choices(_DIGITS, k=10))
     return f'{prefix}-{digits}'
 
 
 def _random_marking(seq: int) -> str:
-    """
-    FIX: removed random dept/year prefix — those made collisions inevitable
-    across categories (7 depts × 8 years × 10M seq ≪ 55M rows needed).
-    The global seq counter is already unique; we just zero-pad it.
-    """
     return f'RNP/{seq:010d}'
 
 
-# Pre-computed date range to avoid repeated timedelta arithmetic inside the loop
-_DATE_START   = date(2015, 1, 1)
-_DATE_RANGE   = (date(2024, 12, 31) - _DATE_START).days
+_DATE_START = date(2015, 1, 1)
+_DATE_RANGE = (date(2024, 12, 31) - _DATE_START).days
 
 
 def _random_date() -> date:
@@ -355,11 +339,6 @@ def _random_date() -> date:
 
 @contextmanager
 def _signal_muted(sender):
-    """Temporarily disconnect auto_classify_equipment for bulk inserts.
-    FIX: original only reconnected at the very end of handle(); if the command
-    crashed mid-run the signal stayed disconnected for the whole process.
-    Using a context manager guarantees reconnection even on exceptions.
-    """
     if _HAS_SIGNAL:
         post_save.disconnect(auto_classify_equipment, sender=sender)
     try:
@@ -369,23 +348,20 @@ def _signal_muted(sender):
             post_save.connect(auto_classify_equipment, sender=sender)
 
 
-def _build_location_pool(regions, dpus, stations, units, offices):
+def _build_location_pool(regions, dpus, stations, units, training_schools, offices):
     """
     Build a flat list of location-kwarg dicts for random.choice().
-    Each dict is a complete, hierarchically consistent set of FK values
-    ready to be unpacked onto an Equipment instance via setattr().
 
     Weights (approximate share of pool):
-      Stations     40 %  – most equipment lives at a specific station
-      DPUs         30 %
-      Offices      10 %
-      Units        10 %
-      Regions      10 %  – HQ / unassigned
+      Stations          40 %  – most equipment lives at a specific station
+      DPUs              30 %
+      Offices           10 %
+      Units             10 %
+      Regions            5 %  – HQ / unassigned
+      Training Schools   5 %
     """
-    # Pre-resolve FK traversals to avoid N+1 lazy loads
-    dpu_region   = {d.id: d.region for d in dpus}
-    stn_dpu      = {s.id: s.dpu    for s in stations}
-    stn_region   = {s.id: dpu_region.get(stn_dpu[s.id].id) for s in stations if s.id in stn_dpu}
+    dpu_region = {d.id: d.region for d in dpus}
+    stn_dpu    = {s.id: s.dpu    for s in stations}
 
     pool = []
 
@@ -421,6 +397,9 @@ def _build_location_pool(regions, dpus, stations, units, offices):
     for r in regions:
         pool.extend([{'region': r}] * 1)  # weight 1
 
+    for ts in training_schools:
+        pool.extend([{'training_school': ts}] * 1)  # weight 1
+
     return pool
 
 
@@ -442,8 +421,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             '--batch', type=int, default=2_000,
-            help='Bulk-create batch size (default: 2000). '
-                 'Raise to 5000 on fast hardware / PostgreSQL for more speed.',
+            help='Bulk-create batch size (default: 2000).',
         )
         parser.add_argument(
             '--clear', action='store_true',
@@ -482,16 +460,17 @@ class Command(BaseCommand):
                     f'  Deleted {eq_count:,} Equipment record(s). Done.'
                 ))
 
-        # ── Load all reference objects once ───────────────────────────────
+        # ── Load all reference objects once ────────────────────────────────
         self.stdout.write('Loading reference data from DB...')
 
-        statuses  = list(EquipmentStatus.objects.all())
-        regions   = list(Region.objects.all())
-        dpus      = list(DPU.objects.select_related('region').all())
-        stations  = list(Station.objects.select_related('dpu__region').all())
-        units     = list(Unit.objects.all())
-        offices   = list(Office.objects.select_related('region', 'dpu').all())
-        admin     = (
+        statuses         = list(EquipmentStatus.objects.all())
+        regions          = list(Region.objects.all())
+        dpus             = list(DPU.objects.select_related('region').all())
+        stations         = list(Station.objects.select_related('dpu__region').all())
+        units            = list(Unit.objects.all())
+        offices          = list(Office.objects.select_related('region', 'dpu').all())
+        training_schools = list(TrainingSchool.objects.all())
+        admin            = (
             User.objects.filter(is_superuser=True).first()
             or User.objects.first()
         )
@@ -506,12 +485,15 @@ class Command(BaseCommand):
             return
 
         self.stdout.write('Building location pool...')
-        loc_pool = _build_location_pool(regions, dpus, stations, units, offices)
+        loc_pool = _build_location_pool(
+            regions, dpus, stations, units, training_schools, offices
+        )
         self.stdout.write(
             f'  Pool size: {len(loc_pool):,} slots  '
-            f'({len(stations):,} stations | {len(dpus):,} DPUs | {len(units):,} units)'
+            f'({len(stations):,} stations | {len(dpus):,} DPUs | '
+            f'{len(units):,} units | {len(training_schools):,} training schools)'
         )
-        # FIX: guard against empty pool — random.choice([]) raises IndexError
+
         if not loc_pool:
             self.stderr.write(self.style.ERROR(
                 'Location pool is empty — no stations, DPUs, units, or regions found. '
@@ -534,7 +516,7 @@ class Command(BaseCommand):
             if brand.category_id:
                 brand_map.setdefault(brand.category_id, []).append(brand)
 
-        # ── Active status names (for deployment_date logic) ────────────────
+        # ── Active status IDs (for deployment_date logic) ──────────────────
         active_status_ids = set(
             EquipmentStatus.objects.filter(name='Active').values_list('id', flat=True)
         )
@@ -544,7 +526,6 @@ class Command(BaseCommand):
 
         total_created = 0
 
-        # Mute signal for the entire run via context manager (FIX #4)
         with _signal_muted(Equipment):
             for category in categories:
                 cat_brands = brand_map.get(category.id, [])
@@ -558,8 +539,6 @@ class Command(BaseCommand):
                 cat_created = 0
                 batch: list[Equipment] = []
 
-                # FIX: one transaction per category instead of one per batch —
-                # dramatically reduces commit overhead at 1 M rows.
                 with transaction.atomic():
                     for i in range(count_per_cat):
                         seq_base += 1
@@ -585,24 +564,17 @@ class Command(BaseCommand):
                             updated_by          = admin,
                         )
 
-                        # Apply location FKs
+                        # Apply location FKs from pool
                         for field, value in random.choice(loc_pool).items():
                             setattr(eq, field, value)
 
                         batch.append(eq)
 
                         if len(batch) >= batch_size:
-                            inserted = Equipment.objects.bulk_create(
-                                batch, ignore_conflicts=True
-                            )
-                            # FIX: on PostgreSQL bulk_create(ignore_conflicts=True)
-                            # always returns the full input list regardless of how
-                            # many rows were actually written. Use the batch length
-                            # as the upper bound — conflicts are rare (<0.01%).
+                            Equipment.objects.bulk_create(batch, ignore_conflicts=True)
                             cat_created += len(batch)
                             batch = []
 
-                            # FIX: guard against 0 % N == 0 firing immediately
                             if cat_created > 0 and cat_created % 100_000 == 0:
                                 self.stdout.write(
                                     f'    … {cat_created:,} / {count_per_cat:,}'
@@ -610,9 +582,7 @@ class Command(BaseCommand):
 
                     # Flush remaining rows
                     if batch:
-                        Equipment.objects.bulk_create(
-                            batch, ignore_conflicts=True
-                        )
+                        Equipment.objects.bulk_create(batch, ignore_conflicts=True)
                         cat_created += len(batch)
 
                 total_created += cat_created

@@ -400,21 +400,13 @@ class Equipment(models.Model):
             if self.region_id and self.office.region_id != self.region_id:
                 office_errors.append("Office does not belong to the selected Region.")
             if office_errors:
-                errors["office"] = " | ".join(office_errors)
-
-        # Date logic
-        if self.returned_date and not self.deployment_date:
-            errors["deployment_date"] = "Return date requires a deployment date."
-
-        if self.returned_date and self.deployment_date:
-            if self.returned_date < self.deployment_date:
-                errors["returned_date"] = "Return date cannot be before deployment date."
-
+                errors["office"] = " | ".join(office_errors)  
+    
         # Deployment intent requires at least one location field
         if self.registration_intent == self.RegistrationIntent.DEPLOYMENT:
             location_fields = [
                 self.region_id, self.dpu_id, self.station_id,
-                self.unit_id, self.directorate_id, self.department_id, self.office_id,
+                self.unit_id, self.directorate_id, self.department_id, self.office_id, self.training_school_id,
             ]
             if not any(location_fields):
                 errors["registration_intent"] = (

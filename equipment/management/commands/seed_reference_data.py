@@ -7,6 +7,7 @@ Creates:
   - EquipmentCategory  (with matching Brand entries)
   - RegionOffice  →  Region  →  DPUOffice  →  DPU  →  Station
   - Unit  →  Directorate  →  Department  →  Office
+  - TrainingSchool
 
 Usage:
     python manage.py seed_reference_data
@@ -20,7 +21,7 @@ from equipment.models import (
     RegionOffice, Region,
     DPUOffice, DPU, Station,
     Unit, Directorate, Department, Office,
-    Equipment, Stock, Deployment, Lending,
+    Equipment, Stock, Deployment, Lending, TrainingSchool,
 )
 
 
@@ -102,10 +103,8 @@ CATEGORIES_AND_BRANDS = {
 }
 
 # ── Geography ──────────────────────────────────────────────────────────────────
-# Rwanda-realistic structure: region offices → regions → DPU offices → DPUs → stations
 
 regions_dpus = {
-      # (DPU name, Region name)
     ("Gasabo",      "Central Region"),
     ("Nyarugenge",  "Central Region"),
     ("Kicukiro",    "Central Region"),
@@ -140,8 +139,6 @@ regions_dpus = {
     ("Gakenke",     "Northern Region"),
     ("Burera",      "Northern Region"),
     ("Musanze",     "Northern Region"),
-
-
 }
 
 STATIONS = [
@@ -258,9 +255,6 @@ UNITS = [
     "IT",
     "OPO",
     "ISPSSP",
-    "PTS Gishari",
-    "NPC",
-    "Mayange CTTC",
     "Crime Intelligence",
     "Counter Intelligence",
     "PSO",
@@ -288,6 +282,14 @@ UNITS = [
     "Band",
 ]
 
+# ── Training Schools ───────────────────────────────────────────────────────────
+# (name, location)
+TRAINING_SCHOOLS = [
+    "NPC",          
+    "PTS Gishari",  
+    "Mayange CTTC", 
+]
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # COMMAND
@@ -312,6 +314,7 @@ class Command(BaseCommand):
             self._seed_categories_and_brands()
             self._seed_geography()
             self._seed_org_structure()
+            self._seed_training_schools()
 
         self.stdout.write(self.style.SUCCESS("\nDONE. All reference data seeded."))
         self._print_summary()
@@ -340,6 +343,9 @@ class Command(BaseCommand):
             Equipment.objects.all().delete()
 
             # 2. Now safe to delete the reference / lookup tables
+            self.stdout.write("  → Deleting Training Schools...")
+            TrainingSchool.objects.all().delete()
+
             Station.objects.all().delete()
             DPU.objects.all().delete()
             DPUOffice.objects.all().delete()
@@ -454,6 +460,28 @@ class Command(BaseCommand):
             f"  Units: {u_count} created, {len(UNITS) - u_count} already existed"
         ))
 
+    # ── training schools ───────────────────────────────────────────────────────
+    
+    # ── training schools ───────────────────────────────────────────────────────
+
+    def _seed_training_schools(self):
+        self.stdout.write("Seeding training schools...")
+        created = 0
+
+        for name in TRAINING_SCHOOLS:
+            _, was_created = TrainingSchool.objects.get_or_create(
+                name=name,
+                defaults={"location": ""},
+            )
+            if was_created:
+                created += 1
+
+        self.stdout.write(self.style.SUCCESS(
+            f"  Training Schools: {created} created, "
+            f"{len(TRAINING_SCHOOLS) - created} already existed"
+        ))
+
+
     # ── summary ────────────────────────────────────────────────────────────────
 
     def _print_summary(self):
@@ -470,4 +498,5 @@ class Command(BaseCommand):
         self.stdout.write(f"  Directorate        : {Directorate.objects.count()}")
         self.stdout.write(f"  Department         : {Department.objects.count()}")
         self.stdout.write(f"  Office             : {Office.objects.count()}")
+        self.stdout.write(f"  TrainingSchool     : {TrainingSchool.objects.count()}")
         self.stdout.write("─────────────────────────────────────────────────")

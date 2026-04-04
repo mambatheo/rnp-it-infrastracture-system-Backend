@@ -1,10 +1,10 @@
-import base64
+import os
 
 from django.conf import settings
 from django.core.cache import cache
 from django.core import signing
 from django.db.models import Count, Exists, OuterRef, Q
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 
 from rest_framework import viewsets, permissions, filters
@@ -29,7 +29,8 @@ from .serializers import (
     StationSerializer,
     UnitSerializer, DirectorateSerializer, DepartmentSerializer, OfficeSerializer,
     EquipmentCategorySerializer, EquipmentStatusSerializer, BrandSerializer,
-    EquipmentSerializer, StockSerializer, DeploymentSerializer, LendingSerializer,TrainingSchoolSerializer,
+    EquipmentSerializer, StockSerializer, DeploymentSerializer, LendingSerializer,
+    TrainingSchoolSerializer,
 )
 from .tasks import (
     task_excel_all,                task_excel_by_type,
@@ -46,6 +47,7 @@ from .tasks import (
     task_dpu_pdf_all,              task_dpu_pdf_by_dpu,
 )
 
+
 # ─────────────────────────────────────────
 # PERMISSION HELPERS
 # ─────────────────────────────────────────
@@ -59,7 +61,6 @@ def _is_privileged(user):
 
 
 def _location_q(user):
-   
     q = Q()
     if getattr(user, "dpu_id", None):
         q |= Q(dpu=user.dpu)
@@ -160,14 +161,14 @@ class OfficeViewSet(viewsets.ModelViewSet):
     filterset_fields   = ["department", "region", "dpu"]
     search_fields      = ["name"]
 
+
 @extend_schema(tags=["Training Schools"])
 class TrainingSchoolViewSet(viewsets.ModelViewSet):
     queryset           = TrainingSchool.objects.all()
     serializer_class   = TrainingSchoolSerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends    = [filters.SearchFilter]
-    search_fields      = ["name"]  
-
+    search_fields      = ["name"]
 
 
 # ─────────────────────────────────────────
@@ -234,7 +235,7 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         "unit":                 ["exact"],
         "directorate":          ["exact"],
         "department":           ["exact"],
-        "office":               ["exact"],                                
+        "office":               ["exact"],
         "training_school":      ["exact"],
         "brand":                ["exact"],
     }
@@ -242,7 +243,8 @@ class EquipmentViewSet(viewsets.ModelViewSet):
     search_fields = [
         "name", "serial_number", "marking_code",
         "model", "comments",
-        "brand__name", "region__name", "dpu__name", "office__name", "training_school__name",
+        "brand__name", "region__name", "dpu__name",
+        "office__name", "training_school__name",
     ]
 
     ordering_fields = ["created_at", "deployment_date", "name"]
@@ -286,7 +288,6 @@ class StockViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
 
-    # Removed "condition" — Stock model has no such field
     filterset_fields = ["equipment__equipment_type__name"]
 
     search_fields = [
@@ -333,8 +334,6 @@ class DeploymentViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
     filter_backends    = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
 
-    # Removed returned_date / expected_return_date / condition_on_return
-    # — none of those fields exist on Deployment
     filterset_fields = {
         "status":                          ["exact"],
         "equipment":                       ["exact"],
@@ -356,7 +355,8 @@ class DeploymentViewSet(viewsets.ModelViewSet):
         "issued_to_user",
         "issued_to_region__name", "issued_to_dpu__name",
         "issued_to_unit__name", "issued_to_directorate__name",
-        "issued_to_department__name", "issued_to_office__name", "issued_to_trainingschool__name",
+        "issued_to_department__name", "issued_to_office__name",
+        "issued_to_trainingschool__name",
         "comments",
     ]
 
@@ -389,7 +389,7 @@ class DeploymentViewSet(viewsets.ModelViewSet):
             q |= Q(issued_to_unit=user.unit)
             q |= Q(equipment__unit=user.unit)
         if getattr(user, "training_school_id", None):
-            q |= Q(issued_to_training_school=user.training_school)
+            q |= Q(issued_to_trainingschool=user.training_school)
             q |= Q(equipment__training_school=user.training_school)
         if not q:
             return qs.none()
@@ -430,7 +430,8 @@ class LendingViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = Lending.objects.select_related(
             "equipment__brand", "equipment__status", "equipment__equipment_type",
-            "equipment__region", "equipment__dpu", "equipment__unit", "equipment__training_school",
+            "equipment__region", "equipment__dpu",
+            "equipment__unit", "equipment__training_school",
             "issued_by", "return_confirmed_by",
         )
 
@@ -446,7 +447,6 @@ class LendingViewSet(viewsets.ModelViewSet):
         if getattr(user, "unit_id", None):
             q |= Q(equipment__unit=user.unit)
         if getattr(user, "training_school_id", None):
-            q |= Q(issued_to_training_school=user.training_school)
             q |= Q(equipment__training_school=user.training_school)
         if not q:
             return qs.none()
@@ -457,11 +457,21 @@ class LendingViewSet(viewsets.ModelViewSet):
 
 
 # ═════════════════════════════════════════════════════════════════
-#  REPORT VIEWS  (async via Celery)
+#  REPORT INFRASTRUCTURE
 # ═════════════════════════════════════════════════════════════════
 
+XLSX_CT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+PDF_CT  = "application/pdf"
+
+REPORTS_DIR = os.path.join(settings.MEDIA_ROOT, "reports")
+
+
+def _ensure_reports_dir():
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+
+
 def _user_from_token_param(request):
-    """Fall-back: authenticate via ?token= query-param (used for direct download links)."""
+    """Authenticate via ?token= query-param (used for direct download links)."""
     token_str = request.query_params.get("token")
     if not token_str:
         return None
@@ -474,7 +484,7 @@ def _user_from_token_param(request):
 
 
 def _user_from_download_token_param(request):
-    
+    """Authenticate via signed ?dl_token= query-param."""
     token = request.query_params.get("dl_token")
     if not token:
         return None
@@ -503,6 +513,11 @@ def _user_from_download_token_param(request):
 
 
 class _ReportBaseView(APIView):
+    """
+    Base view for all report endpoints.
+    Falls back to token-based auth so reports can be downloaded
+    via direct links (e.g. from React using ?dl_token=... or ?token=...).
+    """
     authentication_classes = [JWTAuthentication]
     permission_classes      = [permissions.IsAuthenticated]
 
@@ -520,65 +535,103 @@ class _ReportBaseView(APIView):
             request.user = user
 
 
-XLSX_CT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-PDF_CT  = "application/pdf"
-
-
-def _enqueue(task_fn, *args):
-    result = task_fn.delay(*args)
-    return result.id
+def _enqueue_response(request, task_fn, *args):
+    """
+    Dispatch a Celery task and return 202 with task_id + signed download token.
+    The frontend polls using the task_id until state = SUCCESS, then downloads.
+    """
+    result   = task_fn.delay(*args)
+    task_id  = result.id
+    uid      = str(getattr(request.user, "id", "")) or None
+    dl_token = signing.dumps(
+        {"uid": uid, "task_id": task_id},
+        salt=getattr(settings, "REPORT_DOWNLOAD_TOKEN_SALT", "report-download-v1"),
+    )
+    return Response(
+        {"task_id": task_id, "status": "PENDING", "download_token": dl_token},
+        status=202,
+    )
 
 
 def _poll_or_download(request, task_id, filename, content_type):
+    """
+    Poll for task completion or stream the finished file from disk.
+
+    Flow:
+      PENDING / STARTED / RETRY / PROGRESS → return 202 with progress info
+      FAILURE                               → return 500 with error detail
+      SUCCESS                               → stream file from disk as FileResponse
+    """
     result = AsyncResult(task_id)
 
+    # ── Still running ─────────────────────────────────────────────────────────
     if result.state in ("PENDING", "STARTED", "RETRY", "PROGRESS"):
-        meta = result.info or {}
-        current = meta.get("current")
-        total   = meta.get("total")
+        meta     = result.info or {}
         progress = None
         try:
+            current = meta.get("current")
+            total   = meta.get("total")
             if current is not None and total:
                 progress = int(current * 100 / total)
         except Exception:
-            progress = None
+            pass
 
         payload = {"task_id": task_id, "status": result.state}
         if progress is not None:
             payload["progress"] = progress
         return Response(payload, status=202)
 
+    # ── Failed ────────────────────────────────────────────────────────────────
     if result.state == "FAILURE":
         return Response(
             {"task_id": task_id, "status": "FAILURE", "detail": str(result.result)},
             status=500,
         )
 
-    raw  = base64.b64decode(result.result)
-    resp = HttpResponse(raw, content_type=content_type)
-    resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+    # ── Done — stream file from disk ──────────────────────────────────────────   
+    file_path = result.result
+
+    if not file_path or not isinstance(file_path, str):
+        return Response(
+            {
+                "task_id": task_id,
+                "status": "FAILURE",
+                "detail": "Task completed but returned no file path.",
+            },
+            status=500,
+        )
+
+    if not os.path.exists(file_path):
+        return Response(
+            {
+                "task_id": task_id,
+                "status": "FAILURE",
+                "detail": (
+                    "Report file not found on disk. "
+                    "It may have been cleaned up. Please regenerate."
+                ),
+            },
+            status=404,
+        )
+
+    # FileResponse streams the file in configurable chunks (default 8KB)
+    # so RAM usage stays flat regardless of file size (even multi-GB Excel files)
+    response = FileResponse(
+        open(file_path, "rb"),          # opened in binary mode
+        content_type=content_type,
+        as_attachment=True,
+        filename=filename,
+    )
+
+    # Clean up task result from Redis (file stays on disk until daily cleanup)
     result.forget()
-    return resp
+
+    return response
 
 
-def _enqueue_response(request, task_fn, *args):
-    task_id = _enqueue(task_fn, *args)
-    uid = getattr(request.user, "id", None)
-    if uid is not None:
-        uid = str(uid)  # UUID -> JSON-safe
-    dl_token = signing.dumps(
-        {"uid": uid, "task_id": task_id},
-        salt=getattr(settings, "REPORT_DOWNLOAD_TOKEN_SALT", "report-download-v1"),
-    )
-    return Response(
-        {
-            "task_id": task_id,
-            "status": "PENDING",
-            "download_token": dl_token,
-        },
-        status=202,
-    )
-
+# ═════════════════════════════════════════════════════════════════
+#  REPORT VIEWS
+# ═════════════════════════════════════════════════════════════════
 
 # ── Equipment reports ─────────────────────────────────────────────────────────
 
@@ -672,6 +725,10 @@ class UnitPDFReportView(_ReportBaseView):
         if unit_id:
             return _enqueue_response(request, task_unit_pdf_by_unit, str(unit_id))
         return _enqueue_response(request, task_unit_pdf_all)
+
+
+# ── Training School reports ───────────────────────────────────────────────────
+
 @extend_schema(tags=["Reports"])
 class TrainingSchoolExcelReportView(_ReportBaseView):
     def get(self, request, trainingschool_id=None):
@@ -682,7 +739,9 @@ class TrainingSchoolExcelReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, XLSX_CT)
         if trainingschool_id:
-            return _enqueue_response(request, task_trainingschool_excel_by_school, str(trainingschool_id))
+            return _enqueue_response(
+                request, task_trainingschool_excel_by_school, str(trainingschool_id)
+            )
         return _enqueue_response(request, task_trainingschool_excel_all)
 
 
@@ -696,7 +755,9 @@ class TrainingSchoolPDFReportView(_ReportBaseView):
         if task_id:
             return _poll_or_download(request, task_id, filename, PDF_CT)
         if trainingschool_id:
-            return _enqueue_response(request, task_trainingschool_pdf_by_school, str(trainingschool_id))
+            return _enqueue_response(
+                request, task_trainingschool_pdf_by_school, str(trainingschool_id)
+            )
         return _enqueue_response(request, task_trainingschool_pdf_all)
 
 
@@ -767,8 +828,8 @@ class DPUPDFReportView(_ReportBaseView):
 @extend_schema(tags=["Reports"])
 class ReportCountsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
-    _CACHE_KEY     = "report_counts_summary"
-    _CACHE_TIMEOUT = 60 * 5   # 5 minutes
+    _CACHE_KEY         = "report_counts_summary"
+    _CACHE_TIMEOUT     = 60 * 5   # 5 minutes
 
     def get(self, request):
         cached = cache.get(self._CACHE_KEY)
@@ -791,7 +852,9 @@ class ReportCountsView(APIView):
             .values("equipment__equipment_type__name")
             .annotate(count=Count("id"))
         )
-        stock_counts = {row["equipment__equipment_type__name"]: row["count"] for row in st_qs}
+        stock_counts = {
+            row["equipment__equipment_type__name"]: row["count"] for row in st_qs
+        }
 
         # 3. Equipment count per Unit (includes units with 0 items)
         unit_qs = (
@@ -843,14 +906,18 @@ class ReportCountsView(APIView):
 
         # 6. Grand totals
         _in_stock      = Stock.objects.filter(equipment=OuterRef("pk"))
-        _active_deploy = Deployment.objects.filter(equipment=OuterRef("pk"), status="Active")
+        _active_deploy = Deployment.objects.filter(
+            equipment=OuterRef("pk"), status="Active"
+        )
         totals = {
             "equipment":          Equipment.objects.count(),
             "stock":              Stock.objects.count(),
             "deployments":        Deployment.objects.count(),
             "active_deployments": Deployment.objects.filter(status="Active").count(),
             "lendings":           Lending.objects.count(),
-            "active_lendings":    Lending.objects.filter(status=Lending.LendingStatus.ACTIVE).count(),
+            "active_lendings":    Lending.objects.filter(
+                                      status=Lending.LendingStatus.ACTIVE
+                                  ).count(),
             "unassigned":         Equipment.objects.filter(
                                       ~Exists(_in_stock),
                                       ~Exists(_active_deploy),

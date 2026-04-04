@@ -2,7 +2,6 @@ import os
 from dotenv import load_dotenv
 from datetime import timedelta
 from pathlib import Path
-import dj_database_url
 from celery.schedules import crontab
 from kombu import Queue, Exchange
 
@@ -18,7 +17,8 @@ ALLOWED_HOSTS = [
     h.strip().replace("https://", "").replace("http://", "").rstrip("/")
     for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
     if h.strip()
-]  
+]
+
 INSTALLED_APPS = [
     'admin_interface',
     'colorfield',
@@ -48,7 +48,7 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',           
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'accounts.middleware.ForcePasswordChangeMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
@@ -85,10 +85,8 @@ DATABASES = {
         'HOST':     os.getenv("DB_HOST",           "db"),
         'PORT':     os.getenv("DB_PORT",           "5432"),
         'OPTIONS': {
-            # Keep persistent connections — avoids re-connecting on every request
             'connect_timeout': 10,
         },
-        # Reuse DB connections for up to 60 s instead of opening a new one per request
         'CONN_MAX_AGE': 60,
     }
 }
@@ -130,16 +128,14 @@ USE_TZ        = True
 # STATIC & MEDIA
 # ─────────────────────────────────────────
 
-STATIC_URL      = 'static/'
-STATIC_ROOT     = BASE_DIR / 'staticfiles'
+STATIC_URL       = 'static/'
+STATIC_ROOT      = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [os.path.join(BASE_DIR, 'static')]
 
 MEDIA_URL  = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 STORAGES = {
-    # All files go to local filesystem.
-    # In Docker, MEDIA_ROOT is backed by a named volume for persistence.
     "default": {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     },
@@ -206,8 +202,8 @@ SPECTACULAR_SETTINGS = {
 # ─────────────────────────────────────────
 # REDIS — three separate databases
 #   DB 0 → Celery broker  (task queue)
-#   DB 1 → Celery results (task status + file bytes)
-#   DB 2 → Django cache   (cache_page, ReportCountsView, etc.)
+#   DB 1 → Celery results (task status)
+#   DB 2 → Django cache   (report paths, etc.)
 # ─────────────────────────────────────────
 
 REDIS_BROKER_URL = os.getenv("REDIS_BROKER_URL", "redis://127.0.0.1:6379/0")
@@ -219,16 +215,14 @@ CACHES = {
         "BACKEND":  "django_redis.cache.RedisCache",
         "LOCATION": REDIS_CACHE_URL,
         "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            # Compress cached values — important when caching large report payloads
-            "COMPRESSOR":   "django_redis.compressors.zlib.ZlibCompressor",
-            # Retry once on connection error instead of raising immediately
-            "IGNORE_EXCEPTIONS": False,
+            "CLIENT_CLASS":          "django_redis.client.DefaultClient",
+            "COMPRESSOR":            "django_redis.compressors.zlib.ZlibCompressor",
+            "IGNORE_EXCEPTIONS":     False,
             "SOCKET_CONNECT_TIMEOUT": 5,
-            "SOCKET_TIMEOUT": 5,
+            "SOCKET_TIMEOUT":         5,
         },
         "KEY_PREFIX": "itinfra",
-        "TIMEOUT":    60 * 30,  # 30 min default cache TTL
+        "TIMEOUT":    60 * 30,  # 30 min default TTL
     }
 }
 
@@ -241,134 +235,99 @@ CELERY_RESULT_BACKEND    = REDIS_RESULT_URL
 CELERY_ACCEPT_CONTENT    = ["json"]
 CELERY_TASK_SERIALIZER   = "json"
 CELERY_RESULT_SERIALIZER = "json"
-
-# How long to keep task results in Redis before auto-deleting
-
-CELERY_RESULT_EXPIRES = 60 * 60 * 2
-
-# Compress large report blobs (base64 xlsx/pdf) before storing in Redis
+CELERY_RESULT_EXPIRES    = 60 * 60 * 2   # 2 hours
 CELERY_RESULT_COMPRESSION = "zlib"
 
-# ── Default time limits (for small/fast tasks) ────────────────────
-# Report tasks override these individually via CELERY_TASK_ANNOTATIONS below
-CELERY_TASK_TIME_LIMIT      = 600   
-CELERY_TASK_SOFT_TIME_LIMIT = 540   
+# ── Default time limits ───────────────────────────────────────────
+CELERY_TASK_TIME_LIMIT      = 600
+CELERY_TASK_SOFT_TIME_LIMIT = 540
 
 # ── Per-task time limits ──────────────────────────────────────────
-
 CELERY_TASK_ANNOTATIONS = {
-    # ── Full-dataset Excel reports (13M+ rows) ─────────────────────────
+    # Full-dataset Excel reports
     'equipment.tasks.task_excel_all': {
-        'time_limit':      3600,   # 60 min hard kill
-        'soft_time_limit': 3540,   # 59 min soft warning
+        'time_limit': 3600, 'soft_time_limit': 3540,
     },
     'equipment.tasks.task_stock_excel_all': {
-        'time_limit':      1800,
-        'soft_time_limit': 1740,
+        'time_limit': 1800, 'soft_time_limit': 1740,
     },
     'equipment.tasks.task_unit_excel_all': {
-        'time_limit':      3600,
-        'soft_time_limit': 3540,
+        'time_limit': 3600, 'soft_time_limit': 3540,
     },
     'equipment.tasks.task_region_excel_all': {
-        'time_limit':      3600,
-        'soft_time_limit': 3540,
+        'time_limit': 3600, 'soft_time_limit': 3540,
     },
     'equipment.tasks.task_dpu_excel_all': {
-        'time_limit':      3600,
-        'soft_time_limit': 3540,
+        'time_limit': 3600, 'soft_time_limit': 3540,
     },
     'equipment.tasks.task_trainingschool_excel_all': {
-        'time_limit':      1800,
-        'soft_time_limit': 1740,
+        'time_limit': 1800, 'soft_time_limit': 1740,
     },
 
-    # ── Full-dataset PDF reports ───────────────────────────────────────
- 
+    # Full-dataset PDF reports
     'equipment.tasks.task_pdf_all': {
-        'time_limit':      600,
-        'soft_time_limit': 540,
+        'time_limit': 600, 'soft_time_limit': 540,
     },
     'equipment.tasks.task_stock_pdf_all': {
-        'time_limit':      600,
-        'soft_time_limit': 540,
+        'time_limit': 600, 'soft_time_limit': 540,
     },
     'equipment.tasks.task_unit_pdf_all': {
-        'time_limit':      3600,
-        'soft_time_limit': 3540,
+        'time_limit': 3600, 'soft_time_limit': 3540,
     },
     'equipment.tasks.task_region_pdf_all': {
-        'time_limit':      3600,
-        'soft_time_limit': 3540,
+        'time_limit': 3600, 'soft_time_limit': 3540,
     },
     'equipment.tasks.task_dpu_pdf_all': {
-        'time_limit':      3600,
-        'soft_time_limit': 3540,
+        'time_limit': 3600, 'soft_time_limit': 3540,
     },
     'equipment.tasks.task_trainingschool_pdf_all': {
-        'time_limit':      1800,
-        'soft_time_limit': 1740,
+        'time_limit': 1800, 'soft_time_limit': 1740,
     },
 
-    # ── Per-type Excel reports ─────────────────────────────────────────
-    # Each type has ~1M rows (13M / ~13 types) — 20 min is enough
+    # Per-type Excel reports
     'equipment.tasks.task_excel_by_type': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
     'equipment.tasks.task_stock_excel_by_type': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
 
-    # ── Per-type PDF reports ───────────────────────────────────────────
+    # Per-type PDF reports
     'equipment.tasks.task_pdf_by_type': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
     'equipment.tasks.task_stock_pdf_by_type': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
 
-    # ── Per-location reports ───────────────────────────────────────────
+    # Per-location reports
     'equipment.tasks.task_unit_excel_by_unit': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
     'equipment.tasks.task_unit_pdf_by_unit': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
     'equipment.tasks.task_region_excel_by_region': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
     'equipment.tasks.task_region_pdf_by_region': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
     'equipment.tasks.task_dpu_excel_by_dpu': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
     'equipment.tasks.task_dpu_pdf_by_dpu': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
     'equipment.tasks.task_trainingschool_excel_by_school': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
     'equipment.tasks.task_trainingschool_pdf_by_school': {
-        'time_limit':      1200,
-        'soft_time_limit': 1140,
+        'time_limit': 1200, 'soft_time_limit': 1140,
     },
 }
 
 # ── Queues ────────────────────────────────────────────────────────
-
-
 CELERY_TASK_QUEUES = (
     Queue('default', Exchange('default'), routing_key='default'),
     Queue('reports', Exchange('reports'), routing_key='reports'),
@@ -380,50 +339,48 @@ CELERY_TASK_DEFAULT_EXCHANGE    = 'default'
 CELERY_TASK_DEFAULT_ROUTING_KEY = 'default'
 
 CELERY_TASK_ROUTES = {
-    # ── All report tasks → reports queue ──────────────────────────
-    'equipment.tasks.task_excel_all':                     {'queue': 'reports'},
-    'equipment.tasks.task_excel_by_type':                 {'queue': 'reports'},
-    'equipment.tasks.task_pdf_all':                       {'queue': 'reports'},
-    'equipment.tasks.task_pdf_by_type':                   {'queue': 'reports'},
-    'equipment.tasks.task_stock_excel_all':               {'queue': 'reports'},
-    'equipment.tasks.task_stock_excel_by_type':           {'queue': 'reports'},
-    'equipment.tasks.task_stock_pdf_all':                 {'queue': 'reports'},
-    'equipment.tasks.task_stock_pdf_by_type':             {'queue': 'reports'},
-    'equipment.tasks.task_unit_excel_all':                {'queue': 'reports'},
-    'equipment.tasks.task_unit_excel_by_unit':            {'queue': 'reports'},
-    'equipment.tasks.task_unit_pdf_all':                  {'queue': 'reports'},
-    'equipment.tasks.task_unit_pdf_by_unit':              {'queue': 'reports'},
-    'equipment.tasks.task_region_excel_all':              {'queue': 'reports'},
-    'equipment.tasks.task_region_excel_by_region':        {'queue': 'reports'},
-    'equipment.tasks.task_region_pdf_all':                {'queue': 'reports'},
-    'equipment.tasks.task_region_pdf_by_region':          {'queue': 'reports'},
-    'equipment.tasks.task_dpu_excel_all':                 {'queue': 'reports'},
-    'equipment.tasks.task_dpu_excel_by_dpu':              {'queue': 'reports'},
-    'equipment.tasks.task_dpu_pdf_all':                   {'queue': 'reports'},
-    'equipment.tasks.task_dpu_pdf_by_dpu':                {'queue': 'reports'},
-    'equipment.tasks.task_trainingschool_excel_all':      {'queue': 'reports'},
-    'equipment.tasks.task_trainingschool_excel_by_school':{'queue': 'reports'},
-    'equipment.tasks.task_trainingschool_pdf_all':        {'queue': 'reports'},
-    'equipment.tasks.task_trainingschool_pdf_by_school':  {'queue': 'reports'},
-
-    # ── Pre-warm tasks → prewarm queue ────────────────────────────
-    'equipment.tasks.prewarm_all_reports':                {'queue': 'prewarm'},
+    'equipment.tasks.task_excel_all':                      {'queue': 'reports'},
+    'equipment.tasks.task_excel_by_type':                  {'queue': 'reports'},
+    'equipment.tasks.task_pdf_all':                        {'queue': 'reports'},
+    'equipment.tasks.task_pdf_by_type':                    {'queue': 'reports'},
+    'equipment.tasks.task_stock_excel_all':                {'queue': 'reports'},
+    'equipment.tasks.task_stock_excel_by_type':            {'queue': 'reports'},
+    'equipment.tasks.task_stock_pdf_all':                  {'queue': 'reports'},
+    'equipment.tasks.task_stock_pdf_by_type':              {'queue': 'reports'},
+    'equipment.tasks.task_unit_excel_all':                 {'queue': 'reports'},
+    'equipment.tasks.task_unit_excel_by_unit':             {'queue': 'reports'},
+    'equipment.tasks.task_unit_pdf_all':                   {'queue': 'reports'},
+    'equipment.tasks.task_unit_pdf_by_unit':               {'queue': 'reports'},
+    'equipment.tasks.task_region_excel_all':               {'queue': 'reports'},
+    'equipment.tasks.task_region_excel_by_region':         {'queue': 'reports'},
+    'equipment.tasks.task_region_pdf_all':                 {'queue': 'reports'},
+    'equipment.tasks.task_region_pdf_by_region':           {'queue': 'reports'},
+    'equipment.tasks.task_dpu_excel_all':                  {'queue': 'reports'},
+    'equipment.tasks.task_dpu_excel_by_dpu':               {'queue': 'reports'},
+    'equipment.tasks.task_dpu_pdf_all':                    {'queue': 'reports'},
+    'equipment.tasks.task_dpu_pdf_by_dpu':                 {'queue': 'reports'},
+    'equipment.tasks.task_trainingschool_excel_all':       {'queue': 'reports'},
+    'equipment.tasks.task_trainingschool_excel_by_school': {'queue': 'reports'},
+    'equipment.tasks.task_trainingschool_pdf_all':         {'queue': 'reports'},
+    'equipment.tasks.task_trainingschool_pdf_by_school':   {'queue': 'reports'},
+    'equipment.tasks.prewarm_all_reports':                 {'queue': 'prewarm'},
 }
 
 # ── Celery Beat (scheduled tasks) ────────────────────────────────
 CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
 CELERY_BEAT_SCHEDULE  = {
-
     "prewarm-all-reports": {
         "task":     "equipment.tasks.prewarm_all_reports",
-        "schedule": crontab(minute="*/20"),  # :00, :20, :40 of every hour
+        "schedule": crontab(minute="*/20"),   # every :00, :20, :40
+    },
+    "cleanup-old-reports": {
+        "task":     "equipment.tasks.cleanup_old_reports",
+        "schedule": crontab(hour=3, minute=0),  # daily at 3 AM UTC
     },
 }
 
-# ── Celery worker behaviour ───────────────────────────────────────
+# ── Worker behaviour ──────────────────────────────────────────────
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
-
-
 CELERY_WORKER_MAX_TASKS_PER_CHILD = 50
 
 # ─────────────────────────────────────────
