@@ -521,8 +521,9 @@ def cleanup_old_reports():
 # ── Report counts pre-computation ─────────────────────────────────────────────
 
 @shared_task(queue="prewarm")
-def refresh_report_counts():
-    if not _acquire_task_lock("refresh_report_counts", ttl=300):
+def refresh_report_counts(ignore_lock=False):
+    if not ignore_lock and not _acquire_task_lock("refresh_report_counts", ttl=300):
+        print("[refresh_report_counts] Task already locked, skipping.")
         return
 
     try:

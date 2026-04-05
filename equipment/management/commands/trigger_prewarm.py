@@ -10,18 +10,23 @@ class Command(BaseCommand):
             action="store_true",
             help="Run tasks synchronously (blocking) instead of background async.",
         )
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="Ignore Redis task locks and force execution.",
+        )
 
     def handle(self, *args, **options):
         self.stdout.write(self.style.NOTICE("Triggering report counts refresh..."))
         
         if options["sync"]:
             # Run local (good for debugging)
-            refresh_report_counts()
+            refresh_report_counts(ignore_lock=options["force"])
             self.stdout.write(self.style.NOTICE("Triggering all report pre-warming (sync)..."))
             prewarm_all_reports()
         else:
             # Run background (correct way for production)
-            refresh_report_counts.delay()
+            refresh_report_counts.apply_async(kwargs={"ignore_lock": options["force"]})
             self.stdout.write(self.style.NOTICE("Triggering all report pre-warming (background queue)..."))
             prewarm_all_reports.delay()
 
