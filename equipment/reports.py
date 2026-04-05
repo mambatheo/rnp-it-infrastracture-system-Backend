@@ -681,27 +681,51 @@ def _build_pdf(elements, report_title, output_path):
 def _pdf_tables_from_stream(stream, headers, col_widths, table_chunk=PDF_TABLE_CHUNK):
     """
     Stream rows and yield Table flowables in chunks.
-    Never loads all rows into memory at once.
-    Returns (elements_list, row_count).
+    NEVER loads all rows into memory at once — but ReportLab elements 
+    must be capped to prevent OOM on 17M-row datasets.
     """
     elements  = []
     batch     = []
     row_count = 0
+    limit     = 20_000 # Safety cap for PDF rows
     scaled_w  = _scale_cols(col_widths)
+
     for row in stream:
         batch.append(row)
         row_count += 1
+
+        if row_count >= limit:
+            # Add what we have and stop
+            w_hdr, w_data = _wrap_rows(headers, batch)
+            t = Table([w_hdr]+w_data, repeatRows=1, hAlign="LEFT", colWidths=scaled_w)
+            t.setStyle(TABLE_STYLE)
+            elements.extend([t, Spacer(1, 0.2*cm)])
+            
+            # Add truncation warning
+            warn_style = ParagraphStyle("PDFWarn", fontName=_PDF_FONT_BOLD, fontSize=11, textColor=colors.red)
+            elements.append(Spacer(1, 1*cm))
+            elements.append(Paragraph(
+                f"SAFETY LIMIT REACHED: This report contains over {limit:,} items. "
+                "PDF generation has been truncated to prevent system instability. "
+                "For the full dataset (17M+ rows), please use the EXCEL format instead.",
+                warn_style
+            ))
+            batch = []
+            break
+
         if len(batch) >= table_chunk:
             w_hdr, w_data = _wrap_rows(headers, batch)
             t = Table([w_hdr]+w_data, repeatRows=1, hAlign="LEFT", colWidths=scaled_w)
             t.setStyle(TABLE_STYLE)
             elements.extend([t, Spacer(1, 0.2*cm)])
             batch = []
+
     if batch:
         w_hdr, w_data = _wrap_rows(headers, batch)
         t = Table([w_hdr]+w_data, repeatRows=1, hAlign="LEFT", colWidths=scaled_w)
         t.setStyle(TABLE_STYLE)
         elements.extend([t, Spacer(1, 0.2*cm)])
+
     return elements, row_count
 
 

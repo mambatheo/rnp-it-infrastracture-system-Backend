@@ -31,4 +31,4 @@ class Command(BaseCommand):
             prewarm_all_reports.delay()
 
         self.stdout.write(self.style.SUCCESS("Successfully dispatched pre-warm tasks to Celery!"))
-        self.stdout.write(self.style.WARNING("Note: With 50M rows, this may take several minutes to complete."))
+      

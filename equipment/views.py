@@ -522,17 +522,28 @@ class _ReportBaseView(APIView):
     permission_classes      = [permissions.IsAuthenticated]
 
     def initial(self, request, *args, **kwargs):
+        # 1. Try standard JWT auth (headers)
         try:
             super().initial(request, *args, **kwargs)
-        except Exception:
-            user = _user_from_download_token_param(request)
-            if user and user.is_active:
-                request.user = user
+            if request.user and request.user.is_authenticated:
                 return
-            user = _user_from_token_param(request)
-            if not user or not user.is_active:
-                raise AuthenticationFailed("Valid authentication token required.")
+        except Exception:
+            pass
+
+        # 2. Try signed download token (?dl_token=...)
+        user = _user_from_download_token_param(request)
+        if user and user.is_active:
             request.user = user
+            return
+
+        # 3. Try raw JWT in query param (?token=...)
+        user = _user_from_token_param(request)
+        if user and user.is_active:
+            request.user = user
+            return
+
+        # 4. Fail
+        raise AuthenticationFailed("Valid authentication token required.")
 
 
 def _enqueue_response(request, task_fn, *args):
