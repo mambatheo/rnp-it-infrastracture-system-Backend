@@ -57,21 +57,21 @@ urlpatterns = [
     # ── Reports — Equipment ────────────────────────────
     path("reports/excel/",
          EquipmentExcelReportView.as_view(), name="report-excel-all"),
-    path("reports/excel/<str:equipment_type>/",
+    path("reports/excel/<path:equipment_type>/",
          EquipmentExcelReportView.as_view(), name="report-excel-type"),
     path("reports/pdf/",
          EquipmentPDFReportView.as_view(),   name="report-pdf-all"),
-    path("reports/pdf/<str:equipment_type>/",
+    path("reports/pdf/<path:equipment_type>/",
          EquipmentPDFReportView.as_view(),   name="report-pdf-type"),
 
     # ── Reports — Stock ────────────────────────────────
     path("reports/stock/excel/",
          StockExcelReportView.as_view(),     name="report-stock-excel-all"),
-    path("reports/stock/excel/<str:equipment_type>/",
+    path("reports/stock/excel/<path:equipment_type>/",
          StockExcelReportView.as_view(),     name="report-stock-excel-type"),
     path("reports/stock/pdf/",
          StockPDFReportView.as_view(),       name="report-stock-pdf-all"),
-    path("reports/stock/pdf/<str:equipment_type>/",
+    path("reports/stock/pdf/<path:equipment_type>/",
          StockPDFReportView.as_view(),       name="report-stock-pdf-type"),
 
     # ── Reports — Unit-based ───────────────────────────

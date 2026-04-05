@@ -651,7 +651,8 @@ class EquipmentExcelReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
         today    = timezone.now().strftime("%Y%m%d")
         task_id  = request.query_params.get("task_id")
-        slug     = (equipment_type or "all").replace(" ", "_").lower()
+        # Replace spaces with underscores AND slashes with dashes for file safety
+        slug     = (equipment_type or "all").replace(" ", "_").replace("/", "-").lower()
         filename = f"equipment_{slug}_{today}.xlsx"
 
         if task_id:
@@ -666,7 +667,8 @@ class EquipmentPDFReportView(_ReportBaseView):
     def get(self, request, equipment_type=None):
         today    = timezone.now().strftime("%Y%m%d")
         task_id  = request.query_params.get("task_id")
-        slug     = (equipment_type or "all").replace(" ", "_").lower()
+        # Replace spaces with underscores AND slashes with dashes for file safety
+        slug     = (equipment_type or "all").replace(" ", "_").replace("/", "-").lower()
         filename = f"equipment_{slug}_{today}.pdf"
 
         if task_id:
