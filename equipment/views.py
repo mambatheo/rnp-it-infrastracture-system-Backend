@@ -829,108 +829,40 @@ class DPUPDFReportView(_ReportBaseView):
 class ReportCountsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
     _CACHE_KEY         = "report_counts_summary"
-    _CACHE_TIMEOUT     = 60 * 5   # 5 minutes
+
+    _EMPTY_PAYLOAD = {
+        "_computing": True,
+        "_message": (
+            "Counts are being computed in the background. "
+            "This usually takes under 10 minutes. Please refresh shortly."
+        ),
+        "totals": {
+            "equipment":          0,
+            "stock":              0,
+            "deployments":        0,
+            "active_deployments": 0,
+            "lendings":           0,
+            "active_lendings":    0,
+            "unassigned":         0,
+        },
+        "equipment_counts": {},
+        "stock_counts":     {},
+        "region_counts":    {},
+        "dpu_counts":       {},
+        "unit_counts":      {},
+    }
 
     def get(self, request):
         cached = cache.get(self._CACHE_KEY)
+
         if cached is not None:
-            return Response(cached)
+            return Response(cached, status=200)
 
-        # 1. Equipment count per type
-        eq_qs = (
-            Equipment.objects
-            .filter(equipment_type__isnull=False)
-            .values("equipment_type__name")
-            .annotate(count=Count("id"))
-        )
-        equipment_counts = {row["equipment_type__name"]: row["count"] for row in eq_qs}
+        # Cache empty — trigger background computation
+        try:
+            from .tasks import refresh_report_counts
+            refresh_report_counts.apply_async(countdown=2)
+        except Exception:
+            pass
 
-        # 2. Stock count per equipment type
-        st_qs = (
-            Stock.objects
-            .filter(equipment__equipment_type__isnull=False)
-            .values("equipment__equipment_type__name")
-            .annotate(count=Count("id"))
-        )
-        stock_counts = {
-            row["equipment__equipment_type__name"]: row["count"] for row in st_qs
-        }
-
-        # 3. Equipment count per Unit (includes units with 0 items)
-        unit_qs = (
-            Equipment.objects
-            .filter(unit__isnull=False)
-            .values("unit__id", "unit__name")
-            .annotate(count=Count("id"))
-        )
-        unit_counts = {
-            str(row["unit__id"]): {"count": row["count"], "name": row["unit__name"]}
-            for row in unit_qs
-        }
-        for u in Unit.objects.values("id", "name").order_by("name"):
-            uid = str(u["id"])
-            if uid not in unit_counts:
-                unit_counts[uid] = {"count": 0, "name": u["name"]}
-
-        # 4. Equipment count per Region (includes regions with 0 items)
-        region_qs = (
-            Equipment.objects
-            .filter(region__isnull=False)
-            .values("region__id", "region__name")
-            .annotate(count=Count("id"))
-        )
-        region_counts = {
-            str(row["region__id"]): {"count": row["count"], "name": row["region__name"]}
-            for row in region_qs
-        }
-        for r in Region.objects.values("id", "name").order_by("name"):
-            rid = str(r["id"])
-            if rid not in region_counts:
-                region_counts[rid] = {"count": 0, "name": r["name"]}
-
-        # 5. Equipment count per DPU (includes DPUs with 0 items)
-        dpu_qs = (
-            Equipment.objects
-            .filter(dpu__isnull=False)
-            .values("dpu__id", "dpu__name")
-            .annotate(count=Count("id"))
-        )
-        dpu_counts = {
-            str(row["dpu__id"]): {"count": row["count"], "name": row["dpu__name"]}
-            for row in dpu_qs
-        }
-        for d in DPU.objects.values("id", "name").order_by("name"):
-            did = str(d["id"])
-            if did not in dpu_counts:
-                dpu_counts[did] = {"count": 0, "name": d["name"]}
-
-        # 6. Grand totals
-        _in_stock      = Stock.objects.filter(equipment=OuterRef("pk"))
-        _active_deploy = Deployment.objects.filter(
-            equipment=OuterRef("pk"), status="Active"
-        )
-        totals = {
-            "equipment":          Equipment.objects.count(),
-            "stock":              Stock.objects.count(),
-            "deployments":        Deployment.objects.count(),
-            "active_deployments": Deployment.objects.filter(status="Active").count(),
-            "lendings":           Lending.objects.count(),
-            "active_lendings":    Lending.objects.filter(
-                                      status=Lending.LendingStatus.ACTIVE
-                                  ).count(),
-            "unassigned":         Equipment.objects.filter(
-                                      ~Exists(_in_stock),
-                                      ~Exists(_active_deploy),
-                                  ).count(),
-        }
-
-        payload = {
-            "totals":           totals,
-            "equipment_counts": equipment_counts,
-            "stock_counts":     stock_counts,
-            "unit_counts":      unit_counts,
-            "region_counts":    region_counts,
-            "dpu_counts":       dpu_counts,
-        }
-        cache.set(self._CACHE_KEY, payload, self._CACHE_TIMEOUT)
-        return Response(payload)
+        return Response(self._EMPTY_PAYLOAD, status=202)

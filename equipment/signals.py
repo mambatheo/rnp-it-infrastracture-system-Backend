@@ -62,69 +62,27 @@ def _invalidate_stock_caches(stock_instance):
 
 def _schedule_equipment_regen(type_name, unit_id, region_id, dpu_id):
     """
-    Queue background Celery tasks to rebuild only the invalidated reports.
-    Import tasks here (not at module level) to avoid circular imports.
-    countdown=5 gives Django a moment to finish the DB write before reading.
+    Schedule a single coalesced background regeneration.
+    Replaces the previous 18-task storm with one debounced task.
+    cache.add() acts as a 30-second debounce window — rapid saves
+    only trigger one regeneration.
     """
     try:
-        from .tasks import (
-            task_excel_all, task_pdf_all,
-            task_excel_by_type, task_pdf_by_type,
-            task_unit_excel_all, task_unit_pdf_all,
-            task_unit_excel_by_unit, task_unit_pdf_by_unit,
-            task_region_excel_all, task_region_pdf_all,
-            task_region_excel_by_region, task_region_pdf_by_region,
-            task_dpu_excel_all, task_dpu_pdf_all,
-            task_dpu_excel_by_dpu, task_dpu_pdf_by_dpu,
-        )
-        DELAY = 5  # seconds — let the DB commit settle first
-
-        # Always regenerate the "all equipment" aggregates
-        task_excel_all.apply_async(countdown=DELAY)
-        task_pdf_all.apply_async(countdown=DELAY)
-
-        # Per-type report (if this equipment has a type)
-        if type_name:
-            task_excel_by_type.apply_async(args=[type_name], countdown=DELAY)
-            task_pdf_by_type.apply_async(args=[type_name], countdown=DELAY)
-
-        # Per-location aggregates + specific sheets
-        if unit_id:
-            task_unit_excel_all.apply_async(countdown=DELAY)
-            task_unit_pdf_all.apply_async(countdown=DELAY)
-            task_unit_excel_by_unit.apply_async(args=[unit_id], countdown=DELAY)
-            task_unit_pdf_by_unit.apply_async(args=[unit_id], countdown=DELAY)
-
-        if region_id:
-            task_region_excel_all.apply_async(countdown=DELAY)
-            task_region_pdf_all.apply_async(countdown=DELAY)
-            task_region_excel_by_region.apply_async(args=[region_id], countdown=DELAY)
-            task_region_pdf_by_region.apply_async(args=[region_id], countdown=DELAY)
-
-        if dpu_id:
-            task_dpu_excel_all.apply_async(countdown=DELAY)
-            task_dpu_pdf_all.apply_async(countdown=DELAY)
-            task_dpu_excel_by_dpu.apply_async(args=[dpu_id], countdown=DELAY)
-            task_dpu_pdf_by_dpu.apply_async(args=[dpu_id], countdown=DELAY)
-
+        regen_key = "regen:pending"
+        if cache.add(regen_key, "1", timeout=30):
+            from .tasks import deferred_regen_all
+            deferred_regen_all.apply_async(countdown=10)
     except Exception as e:
-        # Never crash the request because of background scheduling
         print(f"[signals] background regen scheduling failed: {e}")
 
 
 def _schedule_stock_regen(type_name):
-    """Queue background tasks to rebuild invalidated stock reports."""
+    """Schedule a single coalesced background regeneration for stock changes."""
     try:
-        from .tasks import (
-            task_stock_excel_all, task_stock_pdf_all,
-            task_stock_excel_by_type, task_stock_pdf_by_type,
-        )
-        DELAY = 5
-        task_stock_excel_all.apply_async(countdown=DELAY)
-        task_stock_pdf_all.apply_async(countdown=DELAY)
-        if type_name:
-            task_stock_excel_by_type.apply_async(args=[type_name], countdown=DELAY)
-            task_stock_pdf_by_type.apply_async(args=[type_name], countdown=DELAY)
+        regen_key = "regen:pending"
+        if cache.add(regen_key, "1", timeout=30):
+            from .tasks import deferred_regen_all
+            deferred_regen_all.apply_async(countdown=10)
     except Exception as e:
         print(f"[signals] stock regen scheduling failed: {e}")
 

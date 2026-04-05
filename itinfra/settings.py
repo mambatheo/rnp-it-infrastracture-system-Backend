@@ -226,6 +226,7 @@ CACHES = {
     }
 }
 
+
 # ─────────────────────────────────────────
 # CELERY — core settings
 # ─────────────────────────────────────────
@@ -364,6 +365,9 @@ CELERY_TASK_ROUTES = {
     'equipment.tasks.task_trainingschool_pdf_all':         {'queue': 'reports'},
     'equipment.tasks.task_trainingschool_pdf_by_school':   {'queue': 'reports'},
     'equipment.tasks.prewarm_all_reports':                 {'queue': 'prewarm'},
+    'equipment.tasks.refresh_report_counts':               {'queue': 'prewarm'},
+    'equipment.tasks.cleanup_old_reports':                  {'queue': 'prewarm'},
+    'equipment.tasks.deferred_regen_all':                   {'queue': 'prewarm'},
 }
 
 # ── Celery Beat (scheduled tasks) ────────────────────────────────
@@ -372,6 +376,10 @@ CELERY_BEAT_SCHEDULE  = {
     "prewarm-all-reports": {
         "task":     "equipment.tasks.prewarm_all_reports",
         "schedule": crontab(minute="*/20"),   # every :00, :20, :40
+    },
+    "refresh-report-counts": {
+        "task":     "equipment.tasks.refresh_report_counts",
+        "schedule": crontab(minute="*/10"),   # every 10 minutes
     },
     "cleanup-old-reports": {
         "task":     "equipment.tasks.cleanup_old_reports",

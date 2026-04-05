@@ -65,8 +65,8 @@ services:
       - .:/app
       - media_data:/app/media
 
-  # ── Celery Worker ────────────────────────────────────────────────────────────
-  worker:
+  # ── Celery Worker: Fast Reports (default, reports) ───────────────────────────
+  worker_reports:
     build:
       context: .
       dockerfile: Dockerfile
@@ -82,10 +82,35 @@ services:
       - media_data:/app/media
     command: >
       celery -A itinfra worker
+      -n worker_reports@%%h
       -l info
-      -Q celery,prewarm
+      -Q default,reports
       --pool=prefork
       --concurrency=4
+
+  # ── Celery Worker: Heavy Pre-warm (prewarm) ──────────────────────────────────
+  worker_prewarm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    <<: *backend-env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - media_data:/app/media
+    command: >
+      celery -A itinfra worker
+      -n worker_prewarm@%%h
+      -l info
+      -Q prewarm
+      --pool=prefork
+      --concurrency=2
+      --prefetch-multiplier=1
 
   # ── Celery Beat ──────────────────────────────────────────────────────────────
   beat:
